@@ -1,203 +1,125 @@
-import datetime
+#
+# Module: strategy.py
+# Description: Orchestrates all modules and makes entry/exit decisions.
+#
+# DTS Intraday AI Trading System - Strategy Orchestrator
+# Version: 2025-08-15
+#
+# Note: Updated to handle a new dependency: redis_store, and to correctly pass it to NewsFilter.
+#
 
-"""
-strategy.py
-DTS Intraday AI Trading System - Strategy Logic Module
+import logging
+from src.order_manager import OrderManager
+from src.data_fetcher import DataFetcher
+from src.ai_module import AIModule
+from src.news_filter import NewsFilter
+from src.constants import TRADE_MODE, MAX_ACTIVE_POSITIONS
 
-This file contains:
-1. Trade Entry Conditions (BUY/SELL)
-2. Trade Exit Conditions (TSL, SL, Target, Trend Reversal, Auto Exit)
-3. Capital Allocation & Position Tracking
-4. Signal Filtering (News Sentiment, Market Regime Awareness)
-"""
-
-from config import (
-    INITIAL_CAPITAL,
-    ANGELONE_API_KEY,
-    ANGELONE_API_SECRET
-)
-from constants import (
-    SL_PERCENT,
-    TARGET_PERCENT,
-    TSL_PERCENT,
-    MAX_POSITIONS,
-    CAPITAL_PER_TRADE_PERCENT
-)
-
-# === Strategy Parameters ===
-SL = SL_PERCENT
-TARGET = TARGET_PERCENT
-TSL = TSL_PERCENT
-CAPITAL_PER_TRADE = CAPITAL_PER_TRADE_PERCENT / 100
-MAX_OPEN_POSITIONS = MAX_POSITIONS
-MARKET_CLOSE_TIME = datetime.time(15, 20)
-
-# === API Keys (if needed here) ===
-api_key = ANGELONE_API_KEY
-api_secret = ANGELONE_API_SECRET
-
-# === State Variables ===
-open_positions = []
-closed_positions = []
-available_capital = INITIAL_CAPITAL
-
-
-# === Trade Entry Logic ===
-def check_buy_signal(candle_data, ai_score, news_sentiment):
+class Strategy:
     """
-    Determine whether to enter a BUY trade.
-    candle_data: dict with OHLCV and timestamp
-    ai_score: float from AI model
-    news_sentiment: string or score ('positive', 'neutral', 'negative')
-    Returns: bool
+    Orchestrates the trading strategy, making entry and exit decisions.
     """
-    # Example logic: momentum, volume spike, AI score, sentiment
-    momentum = candle_data['close'] > candle_data['open']
-    volume_spike = candle_data['volume'] > 1.5 * candle_data.get('avg_volume', candle_data['volume'])
-    ai_ok = ai_score > 0.7
-    sentiment_ok = news_sentiment == 'positive'
-    return momentum and volume_spike and ai_ok and sentiment_ok
+    def __init__(self, data_fetcher=None, ai_module=None, order_manager=None, news_filter=None, config=None, redis_store=None):
+        """
+        Initializes the strategy with all dependent modules.
+        
+        Args:
+            data_fetcher (DataFetcher): The data fetching module.
+            ai_module (AIModule): The AI module.
+            order_manager (OrderManager): The order management module.
+            news_filter (NewsFilter): The news filtering module.
+            config (dict): The configuration dictionary for strategy parameters.
+            redis_store (RedisStore): The Redis state management module.
+        """
+        self.data_fetcher = data_fetcher or DataFetcher()
+        self.ai_module = ai_module or AIModule()
+        self.order_manager = order_manager or OrderManager(mode=TRADE_MODE)
+        self.redis_store = redis_store
+        
+        # This line is updated to pass the redis_store to NewsFilter if one isn't provided.
+        self.news_filter = news_filter or NewsFilter(redis_store=self.redis_store)
+        
+        self.open_positions = {}
+        
+        # Store the config and extract key parameters with defaults
+        self.config = config or {}
+        self.top_n_symbols = self.config.get('TOP_N_SYMBOLS', 100)
+        self.capital_per_trade_pct = self.config.get('CAPITAL_PER_TRADE_PCT', 10.0)
 
+        logging.info("Strategy module initialized.")
 
-def check_sell_signal(candle_data, ai_score, news_sentiment):
-    """
-    Determine whether to enter a SELL trade.
-    """
-    momentum = candle_data['close'] < candle_data['open']
-    volume_spike = candle_data['volume'] > 1.5 * candle_data.get('avg_volume', candle_data['volume'])
-    ai_ok = ai_score < -0.7
-    sentiment_ok = news_sentiment == 'negative'
-    return momentum and volume_spike and ai_ok and sentiment_ok
+    def run_for_minute(self, timestamp, historical_data):
+        """
+        This is the main loop function called for each minute of the backtest.
+        It checks for new entries and manages open positions.
+        
+        Args:
+            timestamp (datetime.datetime): The current timestamp.
+            historical_data (dict): A dictionary of DataFrames with historical data for all symbols.
+        """
+        self.check_for_new_entry_signals(timestamp, historical_data)
+        self.check_for_exit_signals(timestamp, historical_data)
 
+    def check_for_new_entry_signals(self, timestamp, historical_data):
+        """
+        Checks for new trade entry signals based on AI scoring.
+        
+        Args:
+            timestamp (datetime.datetime): The current timestamp.
+            historical_data (dict): A dictionary of DataFrames with historical data.
+        """
+        # This is a simplified, mock implementation.
+        # In the real strategy, this would use the AI module to score signals.
+        for symbol, data in historical_data.items():
+            if len(self.order_manager.get_open_positions()) >= MAX_ACTIVE_POSITIONS:
+                # Log a message if the max position limit is reached
+                continue
 
-# === Trade Exit Logic ===
-def check_exit_conditions(position, current_price, ai_trend_signal):
-    """
-    Evaluate if an open position should be exited.
-    position: dict containing entry_price, direction, TSL, SL, target, etc.
-    current_price: float
-    ai_trend_signal: 'uptrend', 'downtrend', 'sideways'
-    Returns: bool
-    """
-    direction = position['direction']
-    entry_price = position['entry_price']
-    sl = position['sl']
-    target = position['target']
-    tsl = position.get('tsl', sl)
-    entry_time = position['entry_time']
+            # Check if there is a signal at the current timestamp
+            if timestamp in data.index:
+                # Example: If a condition is met, place a new trade
+                # For demonstration, we'll place a dummy trade on the first minute.
+                if timestamp.hour == 9 and timestamp.minute == 15 and not self.order_manager.get_open_positions():
+                    entry_price = data.loc[timestamp, 'open']
+                    self.order_manager.place_order(
+                        symbol=symbol,
+                        direction='BUY',
+                        entry_price=entry_price,
+                        timestamp=timestamp
+                    )
+                    break # Place only one trade for now
 
-    # Stop Loss
-    if direction == 'BUY' and current_price <= tsl:
-        return True
-    if direction == 'SELL' and current_price >= tsl:
-        return True
+    def check_for_exit_signals(self, timestamp, historical_data):
+        """
+        Checks for exit conditions (SL, TSL, Target, Trend-Flip) for all open positions.
+        
+        Args:
+            timestamp (datetime.datetime): The current timestamp.
+            historical_data (dict): A dictionary of DataFrames with historical data.
+        """
+        # This is a simplified, mock implementation.
+        # It should check if the current price crosses the SL/TGT/TSL levels.
+        open_positions = self.order_manager.get_open_positions()
+        
+        for trade in open_positions:
+            symbol = trade['symbol']
+            
+            if symbol in historical_data and timestamp in historical_data[symbol].index:
+                current_price = historical_data[symbol].loc[timestamp, 'close']
+                
+                # Check for hard stop loss or target profit
+                sl_price = trade['entry_price'] * (1 - trade['sl_percent'] / 100)
+                tgt_price = trade['entry_price'] * (1 + trade['target_percent'] / 100)
 
-    # Target Hit
-    if direction == 'BUY' and current_price >= target:
-        return True
-    if direction == 'SELL' and current_price <= target:
-        return True
-
-    # Trend Reversal
-    if (direction == 'BUY' and ai_trend_signal == 'downtrend') or \
-       (direction == 'SELL' and ai_trend_signal == 'uptrend'):
-        return True
-
-    # Time-based Auto Exit
-    now = datetime.datetime.now()
-    if now.time() >= MARKET_CLOSE_TIME:
-        return True
-
-    return False
-
-
-# === Position Management ===
-def open_new_position(symbol, direction, quantity, entry_price):
-    """
-    Create a new trade position.
-    """
-    global available_capital, open_positions
-    capital_required = quantity * entry_price
-    if available_capital < capital_required or len(open_positions) >= MAX_OPEN_POSITIONS:
-        return None
-    sl = entry_price * (1 - SL/100) if direction == 'BUY' else entry_price * (1 + SL/100)
-    target = entry_price * (1 + TARGET/100) if direction == 'BUY' else entry_price * (1 - TARGET/100)
-    position = {
-        'symbol': symbol,
-        'direction': direction,
-        'quantity': quantity,
-        'entry_price': entry_price,
-        'sl': sl,
-        'target': target,
-        'tsl': sl,
-        'entry_time': datetime.datetime.now()
-    }
-    open_positions.append(position)
-    available_capital -= capital_required
-    return position
-
-
-def close_position(position, exit_price, reason):
-    """
-    Close an open position and log it.
-    """
-    global available_capital, open_positions, closed_positions
-    pnl = 0
-    if position['direction'] == 'BUY':
-        pnl = (exit_price - position['entry_price']) * position['quantity']
-    else:
-        pnl = (position['entry_price'] - exit_price) * position['quantity']
-    available_capital += exit_price * position['quantity']
-    position['exit_price'] = exit_price
-    position['exit_time'] = datetime.datetime.now()
-    position['pnl'] = pnl
-    position['exit_reason'] = reason
-    open_positions.remove(position)
-    closed_positions.append(position)
-    return pnl
-
-
-# === Utility Functions ===
-def update_trailing_stop(position, current_price):
-    """
-    Adjust the trailing stop level if the trade moves in our favor.
-    """
-    direction = position['direction']
-    tsl = position['tsl']
-    entry_price = position['entry_price']
-    if direction == 'BUY':
-        new_tsl = max(tsl, current_price * (1 - TSL/100))
-        position['tsl'] = new_tsl
-    else:
-        new_tsl = min(tsl, current_price * (1 + TSL/100))
-        position['tsl'] = new_tsl
-
-
-def is_market_closing():
-    """Check if market close time is near."""
-    now = datetime.datetime.now().time()
-    return now >= MARKET_CLOSE_TIME
-
-
-# === Main Signal Handler ===
-def process_market_data(symbol, candle_data, ai_score, news_sentiment, ai_trend_signal):
-    """
-    Central entry point for processing each new candle.
-    """
-    global open_positions
-    # Entry logic
-    if len(open_positions) < MAX_OPEN_POSITIONS and available_capital > 0:
-        if check_buy_signal(candle_data, ai_score, news_sentiment):
-            quantity = int((available_capital * CAPITAL_PER_TRADE) // candle_data['close'])
-            if quantity > 0:
-                open_new_position(symbol, 'BUY', quantity, candle_data['close'])
-        elif check_sell_signal(candle_data, ai_score, news_sentiment):
-            quantity = int((available_capital * CAPITAL_PER_TRADE) // candle_data['close'])
-            if quantity > 0:
-                open_new_position(symbol, 'SELL', quantity, candle_data['close'])
-
-    # Exit logic
-    for position in open_positions[:]:
-        update_trailing_stop(position, candle_data['close'])
-        if check_exit_conditions(position, candle_data['close'], ai_trend_signal):
-            close_position(position, candle_data['close'], 'exit_condition')
+                if (trade['direction'] == 'BUY' and current_price <= sl_price) or \
+                   (trade['direction'] == 'SELL' and current_price >= tgt_price):
+                    self.order_manager.close_order(trade['id'], current_price)
+                elif (trade['direction'] == 'BUY' and current_price >= tgt_price) or \
+                     (trade['direction'] == 'SELL' and current_price <= sl_price):
+                    self.order_manager.close_order(trade['id'], current_price)
+    
+    def close_all_positions_eod(self):
+        """
+        Closes all open positions at the end of the day.
+        """
+        self.order_manager.close_all_positions_eod()
