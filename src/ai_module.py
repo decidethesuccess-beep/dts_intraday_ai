@@ -5,21 +5,32 @@
 # DTS Intraday AI Trading System - AI Module
 # Version: 2025-08-15
 #
+# Note: The AIModule.__init__ has been updated to accept a redis_store instance
+# to align with the overall system architecture for storing AI signals and data.
+#
 
 import logging
 import pandas as pd
 import datetime
+
+# Import RedisStore for proper type hinting
+from src.redis_store import RedisStore
 
 class AIModule:
     """
     Handles all AI-driven aspects of the trading strategy, including
     signal scoring, trend analysis, and dynamic adjustments.
     """
-    def __init__(self):
+    # FIX: Add redis_store as a required positional argument
+    def __init__(self, redis_store: RedisStore):
         """
         Initializes the AI module.
+        
+        Args:
+            redis_store (RedisStore): The Redis store instance for state management.
         """
         logging.info("AIModule initialized.")
+        self.redis_store = redis_store
         self.trend_data = {}
 
     def get_signal_score(self, symbol, data):
@@ -41,20 +52,40 @@ class AIModule:
         if not data.empty:
             # Simple scoring based on a recent price change
             last_price = data['close'].iloc[-1]
-            if len(data) > 2:
-                 prev_price = data['close'].iloc[-2]
-                 if last_price > prev_price:
-                     return 0.8  # Positive score for a small up-move
+            first_price = data['close'].iloc[0]
+            
+            # Use Redis to store the signal score, as per your spec
+            score = 0.5 # Default score
+            if last_price > first_price:
+                score = 0.8 # A stronger score for an upward trend
+            
+            # This is where you would save the score to Redis
+            self.redis_store.set(f"ai_score:{symbol}", score)
+            
+            return score
+        
+        # This will be stored in Redis as per the spec in live trading
+        self.redis_store.set(f"ai_score:{symbol}", 0.0)
         return 0.0
 
-    def detect_trend(self, symbol, data):
+    def get_trade_direction(self, symbol):
         """
-        Detects the current trend (e.g., 'UP', 'DOWN', 'NEUTRAL') based on price flow.
+        Determines the trade direction (BUY/SELL) based on the AI signal.
+        """
+        # This is a mock implementation.
+        # It would use the AI score and other factors from the AI module.
+        signal_score = self.redis_store.get(f"ai_score:{symbol}")
+        if signal_score and float(signal_score) > 0.7:
+            return 'BUY'
+        return None
+    
+    def get_trend_direction(self, data: pd.DataFrame):
+        """
+        Detects the current trend direction using a simplified AI approach.
         
         Args:
-            symbol (str): The stock symbol.
             data (pd.DataFrame): The historical OHLCV data for the symbol.
-            
+        
         Returns:
             str: The detected trend.
         """
@@ -94,7 +125,9 @@ class AIModule:
         Returns:
             float: The leverage multiplier.
         """
-        # Placeholder logic: higher score means higher leverage.
-        if signal_score > 0.7:
+        # Placeholder logic: leverage increases with signal strength.
+        if signal_score > 0.9:
             return 10.0
-        return 5.0
+        elif signal_score > 0.7:
+            return 5.0
+        return 1.0

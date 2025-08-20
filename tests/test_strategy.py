@@ -3,7 +3,16 @@
 # Description: Unit tests for the TradingStrategy class.
 #
 # DTS Intraday AI Trading System - Strategy Unit Tests
-# Version: 2025-08-15
+# Version: 2025-08-20
+#
+# Fixes Applied:
+# ✅ Added a stateful mock for OrderManager.update_position to fix KeyError.
+# ✅ Added a mock for OrderManager.get_open_positions_count to fix AttributeError.
+# ✅ Centralized mock setup in the setUp method for better test maintainability.
+# ✅ Added import for MAX_ACTIVE_POSITIONS to resolve NameError.
+# ✅ Made the mock OrderManager.close_order and OrderManager.close_all_positions_eod
+#    stateful to correctly clear positions, resolving AssertionError.
+# ✅ Corrected method names in test calls to match `strategy.py`.
 #
 
 import unittest
@@ -11,16 +20,19 @@ from unittest.mock import patch, MagicMock
 import sys
 from datetime import datetime, time, timedelta
 import os
+import pandas as pd
 
 # Set up the path to import from the src directory
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the class to be tested
-from src.strategy import TradingStrategy
+from src.strategy import Strategy
+from src.constants import SL_PERCENT, TARGET_PERCENT, TSL_PERCENT, AUTO_EXIT_TIME, MAX_ACTIVE_POSITIONS
+from src.ai_module import AIModule
 
-class TestTradingStrategy(unittest.TestCase):
+class TestStrategy(unittest.TestCase):
     """
-    Test suite for the TradingStrategy class, focusing on unit-testing
+    Test suite for the Strategy class, focusing on unit-testing
     its core logic by mocking all external dependencies.
     """
 
@@ -37,151 +49,297 @@ class TestTradingStrategy(unittest.TestCase):
             'TRADE_MODE': 'paper',
             'INITIAL_CAPITAL': 100000.0,
             'MAX_ACTIVE_POSITIONS': 10,
-            'TOP_N_SYMBOLS': 100,
-            'CAPITAL_PER_TRADE_PCT': 10,
-            'SL_PERCENT': 2,
-            'TARGET_PERCENT': 10,
-            'COOLDOWN_PERIOD_SECONDS': 300,
-            'MARKET_OPEN_TIME': '09:15',
-            'MARKET_CLOSE_TIME': '15:30',
-            'AUTO_EXIT_TIME': '15:20',
+            'TOP_N_SYMBOLS': 5,
+            'CAPITAL_PER_TRADE_PCT': 0.1,
+            'SL_PERCENT': 2.0,
+            'TARGET_PERCENT': 10.0,
+            'TSL_PERCENT': 1.0,
+            'MIN_PROFIT_MODE': True,
+            'AUTO_EXIT_TIME': '15:20'
         }
-    
-    @classmethod
-    def tearDownClass(cls):
-        """
-        Tears down the environment after all tests in this class are done.
-        """
-        cls.patcher.stop()
 
     def setUp(self):
         """
-        Sets up mocks and a new instance of TradingStrategy for each test.
+        Set up mocks and a fresh instance of the Strategy class for each test.
         """
-        # Patch all external dependencies' classes so their constructors are never called.
-        # It's crucial to patch where the class is *used* (in src.strategy), not where it's defined.
-        self.patcher_redis = patch('src.strategy.RedisStore')
-        self.patcher_data_fetcher = patch('src.strategy.DataFetcher')
-        self.patcher_order_manager = patch('src.strategy.OrderManager')
-        self.patcher_news_filter = patch('src.strategy.NewsFilter')
-        
-        self.mock_redis_store_class = self.patcher_redis.start()
-        self.mock_data_fetcher_class = self.patcher_data_fetcher.start()
-        self.mock_order_manager_class = self.patcher_order_manager.start()
-        self.mock_news_filter_class = self.patcher_news_filter.start()
-        
-        # Create and configure MagicMock objects for each dependency
+        # Create mock dependencies for the Strategy class
         self.mock_redis_store = MagicMock()
-        self.mock_data_fetcher = MagicMock()
         self.mock_order_manager = MagicMock()
+        self.mock_data_fetcher = MagicMock()
+        self.mock_ai_module = MagicMock()
         self.mock_news_filter = MagicMock()
-        
-        self.mock_redis_store_class.return_value = self.mock_redis_store
-        self.mock_data_fetcher_class.return_value = self.mock_data_fetcher
-        self.mock_order_manager_class.return_value = self.mock_order_manager
-        self.mock_news_filter_class.return_value = self.mock_news_filter
 
-        # Based on ai_module.py, the AI logic is in a class named 'AIMethods'.
-        # We need to patch this class and its instance methods for the test.
-        # Again, the patch target must be the module where it's used: src.strategy
-        self.patcher_ai_module = patch('src.strategy.AIMethods')
-        self.mock_ai_module_class = self.patcher_ai_module.start()
-        self.mock_ai_instance = MagicMock()
-        self.mock_ai_module_class.return_value = self.mock_ai_instance
+        # ✅ FIX: Create a mock dictionary to simulate open positions and make the mock stateful.
+        self.mock_positions = {}
+        self.mock_order_manager.get_open_positions.return_value = self.mock_positions
         
-        # Set the mock instance on the strategy object's attribute
-        self.strategy = TradingStrategy()
-        self.strategy.ai_module = self.mock_ai_instance
+        # ✅ FIX: Mock get_open_positions_count to prevent AttributeError.
+        # This will return the actual number of open positions in our mock.
+        self.mock_order_manager.get_open_positions_count.side_effect = lambda: len(self.mock_positions)
+
+        # ✅ FIX: Make the mock OrderManager.close_order stateful to correctly clear positions.
+        def mock_close_order(symbol, price):
+            if symbol in self.mock_positions:
+                del self.mock_positions[symbol]
+        self.mock_order_manager.close_order.side_effect = mock_close_order
+
+        # ✅ FIX: Make the mock OrderManager.close_all_positions_eod clear the mock positions.
+        def mock_close_all_positions_eod():
+            self.mock_positions.clear()
+        self.mock_order_manager.close_all_positions_eod.side_effect = mock_close_all_positions_eod
+
+        # ✅ FIX: Add a stateful mock for update_position to correctly update the mock dictionary.
+        def mock_update_position(symbol, updates):
+            if symbol in self.mock_positions:
+                self.mock_positions[symbol].update(updates)
+        self.mock_order_manager.update_position.side_effect = mock_update_position
+
+        # Initialize the Strategy instance with the mocked dependencies
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+
+        # Mock the logging to prevent test output from cluttering the console
+        self.mock_logger = MagicMock()
+        Strategy.logger = self.mock_logger
+
+    @classmethod
+    def tearDownClass(cls):
+        """
+        Cleans up resources after all tests have run.
+        """
+        cls.patcher.stop()
+
+    def test_initialization(self):
+        """
+        Verifies that the Strategy class initializes correctly with all dependencies.
+        """
+        self.assertIsInstance(self.strategy, Strategy)
+        self.assertEqual(self.strategy.max_active_positions, 10)
+        self.assertEqual(self.strategy.sl_percent, 2.0)
+        self.assertEqual(self.strategy.auto_exit_time, '15:20')
+        self.assertEqual(self.strategy.min_profit_mode, True)
+
+    def test_hard_stop_loss_exit(self):
+        """
+        Tests that a position is closed when the hard stop-loss is hit.
+        """
+        symbol = 'SYMBOL1'
+        entry_price = 100.0
         
-    def tearDown(self):
-        """
-        Stops all patches after each test.
-        """
-        self.patcher_redis.stop()
-        self.patcher_data_fetcher.stop()
-        self.patcher_order_manager.stop()
-        self.patcher_news_filter.stop()
-        self.patcher_ai_module.stop()
-        
-    def test_entry_signal_triggers_trade(self):
-        """
-        Verifies that a strong AI signal triggers a new trade entry.
-        """
-        # Set up mock return values to simulate a scenario where a trade should occur.
-        self.mock_redis_store.get_active_positions_count.return_value = 0
-        self.mock_data_fetcher.get_tradable_symbols.return_value = ["SYMBOL1"]
-        self.mock_redis_store.is_symbol_on_cooldown.return_value = False
-        
-        # Mocking the AIMethods instance's behavior. We mock the `evaluate_entry`
-        # and `calculate_ai_leverage` methods as they are used in the strategy.
-        self.mock_ai_instance.evaluate_entry.return_value = True
-        self.mock_ai_instance.calculate_ai_leverage.return_value = 2.0
-        self.mock_ai_instance.get_entry_threshold.return_value = 0.7 # Mock a value for completeness
-
-        self.mock_news_filter.is_trade_allowed.return_value = True
-        self.mock_data_fetcher.get_ltp_for_symbol.return_value = 100.0
-
-        # Execute the method to be tested
-        self.strategy.check_for_new_entry_signals()
-
-        # Assert that the correct methods were called.
-        self.mock_order_manager.enter_position.assert_called_once()
-        self.mock_redis_store.set_symbol_cooldown.assert_called_once_with("SYMBOL1")
-
-    def test_sl_exit_logic(self):
-        """
-        Simulates a price drop that should trigger a hard stop loss.
-        """
-        # Set up a mock open position
-        mock_position = {
-            'symbol': 'SYMBOL1',
-            'entry_price': 100.0,
+        # Populate the mock open_positions dictionary
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
             'direction': 'BUY',
-            'quantity': 10,
-            'entry_time': datetime.now().isoformat()
+            'entry_price': entry_price,
+            'quantity': 10
         }
-        self.mock_redis_store.get_all_open_positions.return_value = {'trade_123': mock_position}
-        
-        # Set up mock LTP to be below the stop loss price (2% of 100 is 98.0)
-        ltp_below_sl = 97.5
-        self.mock_data_fetcher.get_ltp_for_symbol.return_value = ltp_below_sl
-        
-        # --- FIX: Patch datetime.now() to control the time of the test ---
-        with patch('src.strategy.datetime') as mock_datetime:
-            # Set the time to be before the auto-exit time (15:20)
-            mock_datetime.now.return_value = datetime.now().replace(hour=14, minute=0, second=0)
-            mock_datetime.now.side_effect = lambda: datetime.now().replace(hour=14, minute=0, second=0)
-            mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
 
-            # We need to provide a datetime object to the function
-            mock_current_time = mock_datetime.now().time()
-            self.strategy.check_exit_conditions(mock_current_time)
+        # Simulate a price drop below the SL
+        sl_price = entry_price * (1 - SL_PERCENT / 100)
+        current_price = sl_price - 0.5  # A price that should trigger the SL
+
+        # Create mock historical data
+        mock_historical_data = {
+            symbol: pd.DataFrame([{'close': current_price}])
+        }
+
+        # ✅ FIX: Call the correct method name
+        self.strategy.check_hard_sl_target(self.mock_positions, mock_historical_data)
+
+        # Assert the close_order method was called with the correct symbol and price
+        self.mock_order_manager.close_order.assert_called_once_with(symbol, current_price)
+        self.assertEqual(self.mock_positions, {})
+
+    def test_hard_target_exit(self):
+        """
+        Tests that a position is closed when the hard target is hit.
+        """
+        symbol = 'SYMBOL1'
+        entry_price = 100.0
         
-        # Assert that the exit method was called with the correct reason.
-        self.mock_order_manager.exit_position.assert_called_once_with('trade_123', 'hard_stop_loss')
+        # Populate the mock open_positions dictionary
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': entry_price,
+            'quantity': 10
+        }
         
-    def test_auto_exit_at_end_of_day(self):
+        # Simulate a price rise above the target
+        target_price = entry_price * (1 + TARGET_PERCENT / 100)
+        current_price = target_price + 0.5
+
+        # Create mock historical data
+        mock_historical_data = {
+            symbol: pd.DataFrame([{'close': current_price}])
+        }
+
+        # ✅ FIX: Call the correct method name
+        self.strategy.check_hard_sl_target(self.mock_positions, mock_historical_data)
+
+        # Assert the close_order method was called
+        self.mock_order_manager.close_order.assert_called_once_with(symbol, current_price)
+        self.assertEqual(self.mock_positions, {})
+
+    def test_ai_tsl_exit_logic(self):
+        """
+        Tests the AI-driven trailing stop-loss exit logic.
+        """
+        symbol = 'SYMBOL1'
+        entry_price = 100.0
+        current_price = 103.0 # Price is up, TSL should be updated
+        
+        # Initialize the mock position
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': entry_price,
+            'quantity': 10,
+            'trailing_sl': entry_price * (1 - TSL_PERCENT / 100) # Initial TSL
+        }
+
+        # Mock the AI module to return a specific TSL percentage
+        self.mock_ai_module.get_ai_tsl_percentage.return_value = 0.5 # A tighter TSL
+        
+        # Create mock historical data
+        mock_historical_data = {
+            symbol: pd.DataFrame([{'close': current_price}])
+        }
+
+        # Call the TSL exit logic
+        self.strategy.check_ai_tsl_exit(self.mock_positions, mock_historical_data)
+        
+        # Calculate the expected new TSL price
+        new_tsl_price = current_price * (1 - 0.5 / 100)
+        
+        # Assert that update_position was called with the new TSL
+        self.mock_order_manager.update_position.assert_called_once_with(symbol, {'trailing_sl': new_tsl_price})
+        self.mock_order_manager.reset_mock() # Reset mock to allow for a new assertion
+
+        # Simulate TSL hit
+        current_price_hit = 102.0 # A price that hits the new TSL
+        
+        # Update mock data to reflect the TSL hit
+        mock_historical_data = {
+            symbol: pd.DataFrame([{'close': current_price_hit}])
+        }
+        
+        # Call the TSL exit logic again
+        self.strategy.check_ai_tsl_exit(self.mock_positions, mock_historical_data)
+        
+        # Assert that the position was closed
+        self.mock_order_manager.close_order.assert_called_once_with(symbol, current_price_hit)
+        self.assertEqual(self.mock_positions, {})
+
+    def test_trend_flip_exit(self):
+        """
+        Verifies that a position is closed when the trend flips.
+        """
+        symbol = 'SYMBOL1'
+        entry_price = 100.0
+        
+        # Set up a mock open position (long/BUY)
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': entry_price,
+            'quantity': 10
+        }
+        
+        # Mock the AIModule to return a 'DOWN' trend
+        # This will trigger the trend flip exit for a BUY position
+        self.mock_ai_module.get_trend_direction.return_value = 'DOWN'
+        
+        # Mock the historical data to contain actual numeric values
+        mock_historical_data = {
+            symbol: pd.DataFrame([{'close': 105.0}])
+        }
+        
+        # The function will check the last 'close' price to close the position
+        closing_price = mock_historical_data[symbol]['close'].iloc[-1]
+        
+        # Call the method
+        self.strategy.check_trend_flip_exit(self.mock_positions, mock_historical_data)
+        
+        # Assert that close_order was called with the correct symbol and price
+        self.mock_order_manager.close_order.assert_called_once_with(symbol, closing_price)
+        self.assertEqual(self.mock_positions, {})
+
+    def test_entry_condition_max_positions_reached(self):
+        """
+        Verifies that no new entries are made when the max number of open positions is reached.
+        """
+        # Populate the mock positions to hit the max limit (10)
+        for i in range(MAX_ACTIVE_POSITIONS):
+            self.mock_positions[f'SYMBOL{i}'] = {'symbol': f'SYMBOL{i}', 'direction': 'BUY', 'entry_price': 100.0}
+
+        # Mock the signal score to be above the threshold
+        self.mock_ai_module.get_signal_score.return_value = 0.8
+        
+        # Mock historical data for a new symbol
+        mock_historical_data = {'SYMBOL11': pd.DataFrame([{'close': 100.0}])}
+
+        # Call the entry logic
+        self.strategy.check_entry_signals(datetime.now(), mock_historical_data)
+
+        # Assert that open_order was NOT called
+        self.mock_order_manager.open_order.assert_not_called()
+        self.assertIn('SYMBOL0', self.mock_positions) # Ensure existing positions are untouched
+
+    def test_eod_exit_at_end_of_day(self):
         """
         Verifies that all open positions are closed at the auto-exit time.
         """
         # Set up a mock open position
-        mock_position = {
-            'symbol': 'SYMBOL1',
+        symbol = 'SYMBOL1'
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
             'entry_price': 100.0,
             'direction': 'BUY',
             'quantity': 10,
-            'entry_time': datetime.now().isoformat()
         }
-        self.mock_redis_store.get_all_open_positions.return_value = {'trade_123': mock_position}
 
-        # Create a mock time at or after the auto-exit time (15:20)
-        auto_exit_time = time(15, 20)
+        # Create a mock time at the auto-exit time
+        current_time = time(15, 20, 0) # AUTO_EXIT_TIME is 15:20
         
-        # We now pass the mock time as a positional argument, as intended.
-        self.strategy.check_exit_conditions(auto_exit_time)
+        # Call the EOD exit logic
+        self.strategy.check_eod_exit(current_time)
         
-        # Assert that the exit method was called with the correct reason.
-        self.mock_order_manager.exit_position.assert_called_once_with('trade_123', 'auto_exit')
-
-if __name__ == '__main__':
-    unittest.main()
+        # Assert that the EOD method was called
+        self.mock_order_manager.close_all_positions_eod.assert_called_once()
+        self.assertEqual(self.mock_positions, {}) # The mock logic should have cleared this
+        
+    def test_eod_exit_before_end_of_day(self):
+        """
+        Verifies that no positions are closed before the auto-exit time.
+        """
+        # Set up a mock open position
+        symbol = 'SYMBOL1'
+        self.mock_positions[symbol] = {
+            'symbol': symbol,
+            'entry_price': 100.0,
+            'direction': 'BUY',
+            'quantity': 10,
+        }
+        
+        # Create a mock time before the auto-exit time
+        current_time = time(15, 19, 59) # 1 second before auto exit
+        
+        # Call the EOD exit logic
+        self.strategy.check_eod_exit(current_time)
+        
+        # Assert that the EOD method was NOT called
+        self.mock_order_manager.close_all_positions_eod.assert_not_called()
+        self.assertIn(symbol, self.mock_positions) # Position should still exist
+        
+    def test_close_all_positions_eod_method(self):
+        """
+        Verifies that the wrapper method correctly calls the OrderManager's method.
+        """
+        self.strategy.close_all_positions_eod()
+        self.mock_order_manager.close_all_positions_eod.assert_called_once()

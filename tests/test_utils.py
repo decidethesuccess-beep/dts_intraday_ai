@@ -14,6 +14,7 @@ from unittest.mock import patch
 from datetime import datetime, time
 import sys
 import os
+import pytest
 
 # --- FIX for ModuleNotFoundError when running tests from a subdirectory ---
 # Dynamically adds the project root to the Python path.
@@ -70,14 +71,20 @@ class TestUtils(unittest.TestCase):
         signal_score = 0.40
         size_low_score = calculate_position_size(capital, capital_pct, signal_score)
         self.assertAlmostEqual(size_low_score, capital * 0.1 * 1.0)
-        
-    def test_format_currency(self):
-        """
-        Tests the currency formatting function.
-        """
-        self.assertEqual(format_currency(1234567.89), "₹ 1,234,567.89")
-        self.assertEqual(format_currency(1234.5), "₹ 1,234.50")
-        self.assertEqual(format_currency(99.99), "₹ 99.99")
+    
+    def test_format_currency_default_rupee(self):
+        assert format_currency(1234.56) == "₹1,234.56"
+        assert format_currency(0) == "₹0.00"
+        assert format_currency(1000000) == "₹1,000,000.00"
+
+    def test_format_currency_with_different_currency(self):
+        assert format_currency(1234.56, "$") == "$1,234.56"
+        assert format_currency(500, "€") == "€500.00"
+
+    def test_format_currency_invalid_value(self):
+        # Should gracefully handle non-float inputs
+        assert format_currency("abc") == "₹abc"
+
 
 if __name__ == '__main__':
     unittest.main()

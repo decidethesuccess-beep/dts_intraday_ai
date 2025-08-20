@@ -3,23 +3,25 @@
 # Description: Manages trade placement and position tracking.
 #
 # DTS Intraday AI Trading System - Order Manager
-# Version: 2025-08-16
+# Version: 2025-08-18
 #
-# Note: Added handle_auto_exit method to support the EOD auto-exit logic.
+# Note: Removed the circular import of BacktestRunner.
 #
-
 import logging
-from src.config import config
+from src.config import get_config
 from src.angel_order import AngelOrder
 from src.redis_store import RedisStore
 import datetime
+
+# FIX: Define a global variable for configuration
+config = get_config()
 
 class OrderManager:
     """
     Manages the lifecycle of trades, including placement, tracking, and closure.
     Supports both paper and live trading modes.
     """
-    def __init__(self, redis_store: RedisStore, angel_order: AngelOrder, trade_mode: str = config.TRADE_MODE):
+    def __init__(self, redis_store: RedisStore, angel_order: AngelOrder, trade_mode: str = None):
         """
         Initializes the OrderManager.
 
@@ -30,88 +32,101 @@ class OrderManager:
         """
         self.redis_store = redis_store
         self.angel_order = angel_order
+        
+        # FIX: Access TRADE_MODE via dict-style .get() to avoid AttributeError
+        if trade_mode is None:
+            trade_mode = config.get("TRADE_MODE", "paper")
+            
         self.trade_mode = trade_mode
         self.open_positions = {}
         self.closed_trades = []
-        logging.info(f"OrderManager initialized in mode: {self.trade_mode}")
+        
+        # 🔑 Initialize capital management properties
+        self.initial_capital = config.get("INITIAL_CAPITAL", 1000000.0)
+        self.available_capital = self.initial_capital
+        
+        logging.info(f"OrderManager initialized in '{self.trade_mode}' mode with {self.initial_capital} capital.")
 
     def place_order(self, symbol: str, direction: str, quantity: int, entry_price: float):
         """
-        Places a new order based on the trading mode.
-
+        Places a new order for a given symbol.
+        
         Args:
-            symbol (str): The trading symbol.
+            symbol (str): The symbol to trade.
             direction (str): 'BUY' or 'SELL'.
-            quantity (int): Number of shares.
+            quantity (int): Number of shares/units to trade.
             entry_price (float): The price at which the trade is entered.
         """
-        trade_data = {
+        trade_value = quantity * entry_price
+        
+        # Check for sufficient capital
+        if trade_value > self.available_capital:
+            logging.warning(f"Insufficient capital to place trade for {symbol}. Needed: {trade_value}, Available: {self.available_capital}")
+            return False
+
+        # If a trade for this symbol is already open, do not place a new one.
+        if symbol in self.open_positions:
+            logging.warning(f"Position for {symbol} is already open. Skipping new entry.")
+            return False
+
+        trade = {
             'symbol': symbol,
             'direction': direction,
-            'quantity': quantity,
             'entry_price': entry_price,
-            'status': 'OPEN',
-            'entry_time': datetime.datetime.now().isoformat()
+            'quantity': quantity,
+            'entry_time': datetime.now(),
+            'status': 'OPEN'
         }
+        
+        self.open_positions[symbol] = trade
+        # 🔑 Deduct the capital used for the trade
+        self.available_capital -= trade_value
+        logging.info(f"Order placed for {symbol}. Available capital: {self.available_capital}")
+        return True
 
-        if self.trade_mode == 'live':
-            # Live trading logic
-            try:
-                # Assuming angel_order.place_order handles the actual API call
-                order_id = self.angel_order.place_order(symbol, direction, quantity)
-                trade_data['order_id'] = order_id
-                logging.info(f"Live order placed: {direction} {quantity} of {symbol}")
-            except Exception as e:
-                logging.error(f"Failed to place live order for {symbol}: {e}")
-                return
-        else:
-            # Paper trading logic
-            trade_data['order_id'] = f"PAPER_{symbol}_{len(self.open_positions)}"
-            logging.info(f"Paper trade placed: {direction} {quantity} of {symbol}")
-
-        self.open_positions[symbol] = trade_data
-        self.redis_store.set_open_positions(self.open_positions)
-        self.redis_store.add_trade_history(trade_data)
-
-    def close_position(self, symbol: str, exit_price: float):
+    def close_order(self, symbol: str, exit_price: float):
         """
-        Closes an open position and moves it to the closed trades list.
-
+        Closes an open position for a given symbol.
+        
         Args:
-            symbol (str): The trading symbol to close.
-            exit_price (float): The price at which the position is exited.
+            symbol (str): The symbol to close.
+            exit_price (float): The price at which the trade is exited.
         """
         if symbol not in self.open_positions:
-            logging.warning(f"Attempted to close a non-existent position for {symbol}")
-            return
+            logging.warning(f"Cannot close position for {symbol}. No open position found.")
+            return False
 
-        trade_data = self.open_positions.pop(symbol)
-        trade_data['exit_price'] = exit_price
-        trade_data['status'] = 'CLOSED'
-        trade_data['exit_time'] = datetime.datetime.now().isoformat()
-        trade_data['pnl'] = (exit_price - trade_data['entry_price']) * trade_data['quantity']
-        if trade_data['direction'] == 'SELL':
-            trade_data['pnl'] *= -1
-
-        self.closed_trades.append(trade_data)
-        self.redis_store.update_open_positions(self.open_positions)
-        self.redis_store.update_trade_history(trade_data)
-        logging.info(f"Position for {symbol} closed with PnL: {trade_data['pnl']:.2f}")
-
+        trade = self.open_positions.pop(symbol)
+        trade['exit_price'] = exit_price
+        trade['exit_time'] = datetime.now()
+        trade['status'] = 'CLOSED'
+        
+        # 🔑 Calculate and restore capital
+        entry_value = trade['quantity'] * trade['entry_price']
+        exit_value = trade['quantity'] * exit_price
+        pnl = exit_value - entry_value
+        
+        self.available_capital += entry_value + pnl # Restore initial capital plus PnL
+        
+        trade['pnl'] = pnl
+        self.closed_trades.append(trade)
+        
+        logging.info(f"Position for {symbol} closed. PnL: {pnl:.2f}. New available capital: {self.available_capital:.2f}")
+        return True
+    
     def close_all_positions_eod(self):
         """
-        Force-close all open positions at end of day.
-        This is used in backtests and live trading auto-exit logic.
+        Closes all open positions at the end of the day.
         """
         logging.info("Auto-exiting all positions for End of Day.")
         # Create a list to avoid issues with modifying dictionary during iteration
         for symbol in list(self.open_positions.keys()):
-            # For backtesting, we need a closing price. 
+            # For backtesting, you need a closing price. 
             # In a live environment, you'd get the last traded price.
             # Here, we'll use a placeholder or mock value for simplicity.
             # In your backtest_runner, you would pass the EOD price.
             dummy_exit_price = 0 
-            self.close_position(symbol, dummy_exit_price)
+            self.close_order(symbol, dummy_exit_price)
             logging.info(f"EOD exit for {symbol}")
 
     def handle_auto_exit(self):
@@ -138,6 +153,6 @@ class OrderManager:
         This method is essential for backtesting to gather final results.
 
         Returns:
-            list: A list of dictionaries, where each dictionary represents a closed trade.
+            list: A list of dictionaries, where each
         """
         return self.closed_trades

@@ -3,7 +3,9 @@
 # Description: Centralized file for all system-wide constants.
 #
 # DTS Intraday AI Trading System - Constants
-# Version: 2025-08-15
+# Version: 2025-08-20
+#
+# Note: Added the missing AUTO_EXIT_TIME constant to fix the ImportError.
 #
 
 # ===============================
@@ -58,6 +60,7 @@ TOP_N_SYMBOLS = 100
 MARKET_OPEN_TIME = '09:15'
 MARKET_CLOSE_TIME = '15:30'
 COOLDOWN_PERIOD_SECONDS = 300
+AUTO_EXIT_TIME = '15:20' # ✅ FIX: Added missing constant for end-of-day exit.
 
 # ===============================
 # 🧠 AI & System Flags

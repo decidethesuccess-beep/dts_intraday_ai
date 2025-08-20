@@ -1,10 +1,10 @@
 DTS Intraday AI Strategy Specification
 
-Version: 2025-08-15
+Version: 2025-08-16
 Owner: DTS (Strategy Owner)
 Status: Active Development
 
-1. Strategy Overview
+Strategy Overview
 
 The DTS Intraday AI Trading System is a no-indicator, AI/NLP-driven, high-momentum stock trading strategy for NSE India.
 
@@ -12,7 +12,7 @@ It supports both BUY and SELL trades with strict risk management, capital rotati
 
 Noise reduction, minimal false entries, and AI-driven scoring ensure signal purity.
 
-2. Core Philosophy
+Core Philosophy
 
 No traditional indicators (RSI, MACD, etc.)
 
@@ -28,91 +28,129 @@ Market awareness for special conditions (holidays, partial sessions, volatile/ra
 
 Noise-free trading with smart filters
 
-3. Default Settings (as of 2025-08-15)
-Setting	Default Value
-Capital Allocation	10% per trade (max 10 concurrent trades)
-Trade Direction	BUY + SELL enabled
-Target Profit (TGT)	+10%
-Stop Loss (SL)	-2%
-Trailing Stop Loss (TSL)	1% for BUY, 1% for SELL (from entry price)
-TSL Mode	AI (classic / ai / min / max)
-Trend Flip Exit	Always ON
-Auto Exit Time	3:20 PM
-Leverage	OFF (default)
-AI Leverage	ON (default)
-AI Optimization Module	ON — adapts scoring thresholds, trade duration, leverage tiers
-Broker	Angel One
-Market Holiday Detection	ON (NSE calendar primary, broker API secondary)
-News Sentiment Filter	ON — Skip BUY if score < -0.5; Skip SELL if score > +0.5
-Noise Reduction Filter	ON
-Min Profit Mode	Enabled — tightens AI-TSL in low-volatility markets
-4. AI/NLP Components
+Default Settings (as of 2025-08-16)
 
-AI Scoring Engine: Rates signals using momentum, volume, news sentiment
+Setting
 
-AI Trend Detection: Monitors real-time price flow for trend continuation/reversal
+Default Value
 
-AI-TSL: Adjusts trailing SL dynamically based on volatility, news impact, and trade duration; BUY/SELL separately
+Capital Allocation
 
-AI Leverage Manager: Determines leverage using capital tier and trade quality score
+10% per trade (max 10 concurrent trades)
 
-AI Optimization Module: Learns from past trades, adapts scoring thresholds, trade duration, leverage tiers; does not modify hard SL/TGT
+Trade Direction
 
-Integration: Gemini AI Studio for performance analysis and AI functions
+BUY + SELL enabled
 
-5. Capital & Leverage Rules
+Target Profit (TGT)
 
-Capital Rotation: Freed capital immediately available for new trades
++10%
 
-Leverage Control: Manual (default OFF) or AI mode (default ON); AI maps trade quality scores to leverage:
+Stop Loss (SL)
 
-High (>0.8) → full allowed leverage
+-2%
 
-Medium (0.5–0.8) → 50–75% leverage
+Trailing Stop Loss (TSL)
 
-Low (<0.5) → 0% leverage
+1% for BUY, 1% for SELL (from entry price)
 
-6. Special Market Awareness
+TSL Mode
 
-Market Holiday Detection: NSE calendar primary, Angel One API backup
+AI (classic / ai / min / max)
 
-Partial Trading Day Adjustment: Tightens exits, avoids late entries
+Trend Flip Exit
 
-Low Volatility Mode: Capital preservation rules
+Always ON
 
-Short Session Logic: AI adapts SL/TSL for shorter hours
+Auto Exit Time
 
-7. Exit Conditions
+3:20 PM IST
 
-Target hit (+10% BUY / -10% SELL)
+AI-Driven Position Sizing
 
-Stop Loss hit (-2% BUY / +2% SELL)
+Position sizing is a crucial part of risk management and is determined by the AI signal score. This strategy uses a tiered leverage model instead of a linear one to avoid over-allocation on low-confidence signals and to maximize capital on high-confidence trades.
 
-AI-TSL triggered
+Signal Score Range
 
-Trend flip detected
+Leverage Multiplier
 
-Auto-exit at 3:20 PM
+≥0.80
 
-Min Profit Mode triggers early TSL exit
+5.0x
 
-8. AI Safety Layer
+0.50−0.79
 
-Market Regime Awareness – preserves capital on range-bound days
+3.5x
 
-Profit-Lock Behavior – tightens TSL in sideways markets
+<0.50
 
-Holiday & Short Session Logic – adapts SL/TSL for special days
+1.0x
 
-Leverage & Risk Balance – enforces daily leverage caps
+Rationale: This ensures that significant capital is only deployed when the AI system has very high conviction, based on a combination of momentum, volume, and news sentiment.
 
-Continuous Learning – rolling-window avoids overfitting
+Risk Management
 
-Noise Filtering – prevents false entries
+Capital Allocation: Fixed percentage of total capital per trade.
 
-Min Profit Mode – early TSL exits to lock partial profits
+Max Positions: Limits concurrent open trades to a configurable number.
 
-9. Dashboard & Settings
+Dynamic AI Leverage: AI module dynamically adjusts leverage based on signal score.
+
+Trend-Flip Exit: Automatically exits a position if the AI detects a strong trend reversal.
+
+AI-TSL: AI module continuously adjusts the trailing stop loss for each open position.
+
+Hard SL/TGT: Mandatory stop loss and target profit levels.
+
+Guaranteed Auto-Exit: All open positions are auto-closed at a fixed time before market close to prevent overnight risk.
+
+Core Modules
+
+strategy.py: Main trading logic.
+
+data_fetcher.py: Retrieves market data from Angel One API.
+
+ai_module.py: Core AI scoring engine, AI-TSL, and AI leverage.
+
+order_manager.py: Manages trade placement and position tracking.
+
+news_filter.py: Filters trades based on news sentiment.
+
+redis_store.py: Real-time state management.
+
+live_stream.py: Manages live market data ingestion.
+
+backtest_runner.py: Historical simulation engine.
+
+Exit Conditions
+
+Trend-Flip Exit: Always ON, highest priority.
+
+AI-TSL: Dynamic exit, active for open positions in profit.
+
+Hard SL/TGT: -2% SL, +10% TGT (configurable via .env).
+
+Auto-Exit: 3:20 PM IST.
+
+Min Profit Mode: Early TSL exits to lock partial profits.
+
+AI/ML Integration
+
+AI Scoring: AI model rates trade signals (0.0 to 1.0) using momentum, volume spikes, and news sentiment.
+
+AI Leverage: AI-driven position sizing to adjust leverage based on signal confidence.
+
+AI-TSL: Dynamically adjusts TSL to optimize exit points.
+
+Trend-Flip: AI detects trend reversals and triggers immediate exit.
+
+Continuous Learning: Rolling-window optimization prevents overfitting.
+
+Noise Filtering: Prevents false entries.
+
+Min Profit Mode: Early TSL exits to lock partial profits.
+
+Dashboard & Settings
 
 Dedicated Settings Page: Leverage, AI Leverage, TSL Mode, AI Optimization, News Sentiment Filter, Noise Reduction, Min Profit Mode
 
@@ -120,7 +158,7 @@ Performance Reports: Daily, Weekly, Monthly, Yearly via Gemini AI Studio
 
 Live Status Panel: Capital used, open trades, closed PnL, waitlisted leaderboard, pause/resume
 
-10. Data Sources
+Data Sources
 
 Market Data: Angel One Market Feed API (1-min LTP & OHLCV)
 
@@ -130,7 +168,7 @@ Holiday Data: NSE calendar + Angel One API backup
 
 NSE EQ Symbols: Loaded from Angel One static JSON (link), filtered, stored in memory/CSV for live/backtest modules
 
-11. Notes
+Notes
 
 Fully automated, allows manual overrides
 
@@ -142,7 +180,7 @@ Capital rotation ensures optimal use
 
 Compatible with .env.example placeholders
 
-12. AI Webhook Integration
+AI Webhook Integration
 
 Purpose: Provides AI-driven guidance, suggestions, and trade commentary
 
@@ -152,4 +190,4 @@ Functionality: Daily/weekly/monthly/yearly trade commentary, actionable suggesti
 
 Dashboard Integration: Comments stored in Redis keys, displayed on intraday_dashboard_GPT.py front panel
 
-Safety: Timeout/exception handling; advisory only, does not trigger trades
+Safety: Timeout/exception handling; advisory only, does not execute trades automatically.

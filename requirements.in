@@ -1,0 +1,15 @@
+#
+# This file contains the top-level dependencies for the project.
+# Use `pip-compile` to generate the requirements.txt file.
+#
+pandas
+pyotp
+redis
+logzero
+websocket-client
+flask
+streamlit
+plotly
+python-dotenv
+requests
+smartapi-python
