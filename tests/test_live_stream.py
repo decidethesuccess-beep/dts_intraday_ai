@@ -13,53 +13,119 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-# Note: As live_stream.py was not provided, this test file assumes a basic
-# structure where a LiveStreamer class exists.
 from src.live_stream import LiveStreamer
 
 class TestLiveStream(unittest.TestCase):
     """
     Test suite for the live data streaming module.
     """
-    @patch('src.live_stream.RedisStore')
-    @patch('src.live_stream.AngelOneAPI') # Mock the Angel One API for live data
-    def setUp(self, mock_api, mock_redis):
+    def setUp(self):
         """
         Set up mock objects and the LiveStreamer instance for testing.
         """
-        self.mock_redis_store = mock_redis.return_value
-        self.mock_angel_api = mock_api.return_value
-        self.live_streamer = LiveStreamer(self.mock_redis_store)
+        self.mock_redis_store = MagicMock()
+        # Test without credentials to avoid SmartWebSocket constructor issues
+        self.live_streamer = LiveStreamer(redis_store=self.mock_redis_store)
 
-    def test_live_data_ingestion_and_redis_update(self):
+    def test_initialization_without_credentials(self):
         """
-        Verifies that data is received from the mocked API and
-        correctly stored in Redis.
+        Verifies that LiveStreamer initializes correctly without credentials.
         """
-        # Mock the data received from the live stream
-        mock_data = {
-            'symbol': 'INFY',
-            'ltp': 1500.50,
-            'timestamp': '2025-08-15T10:00:00'
-        }
-        
-        # Simulate receiving a data tick
-        self.live_streamer._on_data_received(mock_data)
-        
-        # Check that Redis methods were called correctly
-        self.mock_redis_store.set_ltp_for_symbol.assert_called_with('INFY', 1500.50)
-        self.mock_redis_store.set_last_trade_time.assert_called_with('INFY', '2025-08-15T10:00:00')
+        self.assertIsNone(self.live_streamer.client_code)
+        self.assertIsNone(self.live_streamer.token)
+        self.assertIsNone(self.live_streamer.feed_token)
+        self.assertIsNone(self.live_streamer.sws)
 
-    def test_reconnection_logic_on_error(self):
+    def test_initialization_with_credentials_mocked(self):
         """
-        Simulates an error in the live stream and verifies that the
-        reconnection logic is triggered.
+        Verifies that LiveStreamer initializes correctly with credentials when SmartWebSocket is mocked.
         """
-        with patch.object(self.live_streamer, 'connect_to_stream') as mock_connect:
-            self.live_streamer._on_error("Connection lost.")
+        with patch('src.live_stream.SmartWebSocket') as mock_websocket:
+            mock_websocket.return_value = MagicMock()
             
-            # Check if the connection method was called again
-            self.assertTrue(mock_connect.called)
+            streamer = LiveStreamer(
+                client_code="TEST123",
+                token="test_token",
+                feed_token="test_feed_token",
+                redis_store=self.mock_redis_store,
+                symbols=["INFY", "TCS"]
+            )
             
+            self.assertEqual(streamer.client_code, "TEST123")
+            self.assertEqual(streamer.token, "test_token")
+            self.assertEqual(streamer.feed_token, "test_feed_token")
+            self.assertEqual(streamer.symbols, ["INFY", "TCS"])
+            self.assertIsNotNone(streamer.sws)
+
+    def test_on_message_callback(self):
+        """
+        Verifies that the on_message callback processes data correctly.
+        """
+        mock_message = '{"symbol": "INFY", "ltp": 1500.50}'
+        
+        # Mock the json.loads to return our test data
+        with patch('json.loads') as mock_json_loads:
+            mock_json_loads.return_value = {"symbol": "INFY", "ltp": 1500.50}
+            
+            # Call the callback method
+            self.live_streamer.on_message(None, mock_message)
+            
+            # Verify json.loads was called
+            mock_json_loads.assert_called_once_with(mock_message)
+
+    def test_on_error_callback(self):
+        """
+        Verifies that the on_error callback logs errors correctly.
+        """
+        with patch('src.live_stream.logger') as mock_logger:
+            # Call the callback method
+            self.live_streamer.on_error(None, "Test error message")
+            
+            # Verify error was logged
+            mock_logger.error.assert_called_once_with("WebSocket error: Test error message")
+
+    def test_on_close_callback(self):
+        """
+        Verifies that the on_close callback logs closure correctly.
+        """
+        with patch('src.live_stream.logger') as mock_logger:
+            # Call the callback method
+            self.live_streamer.on_close(None, 1000, "Normal closure")
+            
+            # Verify closure was logged
+            mock_logger.info.assert_called_once_with("WebSocket connection closed.")
+
+    def test_on_open_callback(self):
+        """
+        Verifies that the on_open callback logs opening correctly.
+        """
+        with patch('src.live_stream.logger') as mock_logger:
+            # Call the callback method
+            self.live_streamer.on_open(None)
+            
+            # Verify opening was logged
+            mock_logger.info.assert_called_once_with("WebSocket connection opened.")
+
+    def test_connect_without_websocket(self):
+        """
+        Verifies that connect method handles missing WebSocket gracefully.
+        """
+        # Should not raise an error
+        self.live_streamer.connect()
+
+    def test_connect_with_websocket_mocked(self):
+        """
+        Verifies that connect method calls the WebSocket connect method when available.
+        """
+        # Create a mock websocket
+        mock_websocket = MagicMock()
+        self.live_streamer.sws = mock_websocket
+        
+        # Call connect
+        self.live_streamer.connect()
+        
+        # Verify connect was called
+        mock_websocket.connect.assert_called_once()
+
 if __name__ == '__main__':
     unittest.main()

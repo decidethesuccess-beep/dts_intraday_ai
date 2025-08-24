@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dts-intraday-ai"
+version = "1.0.0"
+description = "DTS Intraday AI Backtest System"
+authors = [{name = "DTS Team"}]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pandas",
+    "requests",
+    "python-dotenv",
+    "redis",
+    "flask",
+    "streamlit",
+    "plotly",
+    "websocket-client",
+    "logzero",
+    "pyotp",
+    "smartapi-python",
+    "python-dateutil"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=1.0.0"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+pythonpath = ["src", "."]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+

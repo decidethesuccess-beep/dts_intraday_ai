@@ -1,0 +1,69 @@
+PS D:\dts_intraday_ai> dir 
+    Directory: D:\dts_intraday_ai
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----         8/23/2025  11:16 PM                .pytest_cache
+d-----         8/23/2025  11:17 PM                .venv
+d-----         8/23/2025  11:17 PM                .vscode
+d-----         8/23/2025  11:17 PM                data
+d-----         8/23/2025  11:17 PM                OLD working files
+d-----         8/24/2025   9:55 AM                src
+d-----         8/23/2025  11:17 PM                tests
+-a----         8/15/2025   3:19 PM           3317 .env
+-a----         8/15/2025   2:44 PM           2537 .env.example
+-a----         8/17/2025   9:06 AM             14 .gitignore
+-a----         8/16/2025   8:05 PM            505 debug.md
+-a----         8/18/2025   9:29 PM           3949 Dynamic_Checklist.md
+-a----         8/17/2025   9:55 AM           1289 Local_and_GitHub_workflow.md
+-a----         8/13/2025   9:47 PM           2933 Next Development Roadmap.md
+-a----         8/13/2025   9:19 PM           5924 OLD strategy_spec.md
+-a----         8/23/2025   8:00 PM           1782 Project Context.md
+-a----         8/17/2025   1:44 PM            598 README.md
+-a----         8/23/2025  11:01 PM           3378 reference.txt
+-a----         8/17/2025   1:19 PM             52 requirements-dev.in
+-a----         8/17/2025   1:15 PM            249 requirements.in
+-a----         8/18/2025   9:28 PM            248 requirements.txt
+-a----         8/15/2025   4:19 PM           6920 strategy_spec - old.md
+-a----         8/19/2025   7:57 PM           5077 strategy_spec.md
+-a----         8/20/2025   9:39 PM           1023 Test_Error_Fix_Record.md
+
+PS D:\dts_intraday_ai\tests> dir
+    Directory: D:\dts_intraday_ai\tests
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----         8/23/2025  11:17 PM                .pytest_cache
+d-----         8/24/2025   9:52 AM                __pycache__
+-a----         8/11/2025   9:51 PM              6 .gitkeep
+-a----         8/24/2025   9:48 AM           4631 test_backtest.py
+-a----         8/16/2025   9:57 PM           2152 test_backtest_setup.py
+-a----         8/24/2025   9:51 AM           6544 test_integration.py
+-a----         8/15/2025   7:24 PM           2446 test_live_stream.py
+-a----         8/20/2025   8:31 PM          13806 test_strategy.py
+-a----         8/18/2025  10:37 PM           3586 test_utils.py
+-a----         8/12/2025   7:25 PM              0 __init__.py
+PS D:\dts_intraday_ai\src> dir
+    Directory: D:\dts_intraday_ai\src
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----         8/24/2025   9:55 AM                .pytest_cache
+d-----         8/23/2025  11:17 PM                __pycache__
+-a----         8/15/2025   8:01 AM           3926 .env
+-a----         8/11/2025   9:51 PM              6 .gitkeep
+-a----         8/19/2025  10:33 PM           4755 ai_module.py
+-a----         8/15/2025   7:11 PM           4707 ai_webhook.py
+-a----         8/15/2025   7:17 PM           3826 angel_order.py
+-a----         8/15/2025   7:12 PM           2611 backtest_dashboard.py
+-a----         8/18/2025  10:21 PM           3197 backtest_runner.py
+-a----         8/18/2025  10:13 PM           2836 config.py
+-a----         8/20/2025   7:54 PM           1963 constants.py
+-a----         8/15/2025   9:38 PM           3177 data_fetcher.py
+-a----         8/12/2025   7:25 PM              0 dhan_order.py
+-a----         8/15/2025   7:12 PM           3198 intraday_dashboard_GPT.py
+-a----         8/18/2025  10:25 PM           3070 live_stream.py
+-a----         8/15/2025   7:13 PM           3545 news_filter.py
+-a----         8/19/2025   9:34 PM           5987 order_manager.py
+-a----         8/15/2025   7:08 PM           4629 paper_trade_system.py
+-a----         8/15/2025   7:09 PM           5851 redis_store.py
+-a----         8/20/2025   8:34 PM           8514 strategy.py
+-a----         8/18/2025  10:46 PM           2428 utils.py
+-a----         8/12/2025   7:25 PM              0 __init__.py
