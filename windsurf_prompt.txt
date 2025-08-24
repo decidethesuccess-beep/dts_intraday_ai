@@ -1,0 +1,52 @@
+Title: DTS Intraday AI – Advisory Note (Read Before Acting)
+
+Context & Rules
+Before writing or changing any code, always load these four files into working memory:
+
+strategy_spec.md – Project strategy and behavior rules
+
+.env.example – Env keys and settings (sanitized)
+
+reference.txt – Current directory tree
+
+requirements.txt – Runtime dependencies
+
+Do not change any files unless I ask. Treat code as read-only.
+
+When I post an error or request:
+
+Reproduce mentally using the 4 files.
+
+Find root cause.
+
+Propose a minimal fix.
+
+Show a single complete patch only for approved files.
+
+Project Snapshot
+
+Name: DTS Intraday AI (NSE intraday, AI-based, no classic indicators)
+
+Key Modules: strategy.py, backtest_runner.py, data_fetcher.py, order_manager.py, live_stream.py, ai_module.py, dashboards, tests/
+
+Baseline: 24 tests passing (pytest -v)
+
+Response Format (always follow):
+(A) What I Read – Confirm you loaded the 4 files, note key constraints.
+(B) Diagnosis / Plan – Short, ordered steps (no edits yet).
+(C) Patch – If approved, full content of edited file(s).
+(D) Verification – Commands to run (e.g., pytest -v) and expected result.
+(E) Rollback – Git commands to undo.
+
+Golden Rules
+
+Make surgical changes.
+
+Keep tests green; add tests only if asked.
+
+Fix imports by adjusting test paths, not moving files.
+
+If unclear, make a best-effort decision — do not stall.
+
+Task Flow
+I will paste an error, goal, or file to create/modify. Follow the format above.
