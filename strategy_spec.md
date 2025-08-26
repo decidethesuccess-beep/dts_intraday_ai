@@ -1,6 +1,6 @@
 # DTS Intraday AI Strategy Specification
 
-**Version:** 2025-08-24  
+**Version:** 2025-08-27  
 **Owner:** DTS (Strategy Owner)  
 **Status:** Active Development  
 
@@ -131,7 +131,30 @@ Position sizing uses **AI signal scores** with a **tiered leverage model** to ma
   - `test_trend_flip_and_dashboard_reflects_change`  
   - `test_edge_cases_integration`  
 
-**Results:** 36/36 tests passing, tagged release `v0.3-integration-tests`.  
+**Results:** 46/46 tests passing, Phase 2 AI completed.  
 **Mocks & Isolation:** Problematic dependencies (e.g., dashboard) replaced with mock classes for CI/CD stability.  
 
 ---
+
+## 13. Phase 2 AI Completion & Next Steps
+
+**Phase 2 AI features implemented:**  
+- AI Stop Loss / Target Adjustment (BUY/SELL, sentiment-aware).  
+- Trend Reversal exits enhanced with AI confirmation.  
+- All 46 tests passing (unit + integration).  
+
+**Next Development Goals (Phase 3 / AI Enhancements):**  
+1. **AI News Sentiment Integration**  
+   - Real-time NLP scoring of headlines.  
+   - Skip BUY on negative news, favor SELL.  
+   - Influence AI SL/Target and leverage decisions.  
+
+2. **Webhook Triggers for AI Events**  
+   - Push AI alerts, commentary, and risk signals.  
+   - Optional integration with dashboard or alerts.  
+   - Include safety/timeouts.  
+
+3. **Dashboard Visualization of AI Metrics**  
+   - Display AI scores, leverage, TSL movements, trade signals.  
+   - Filter by AI-only trades, trend-flip, and news sentiment.  
+   - Live updates synced via Redis and Gemini AI Studio API.  
