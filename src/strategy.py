@@ -114,7 +114,7 @@ class Strategy:
 
     def check_ai_tsl_exit(self, open_positions, historical_data):
         """
-        Applies a dynamic trailing stop-loss based on AI signals.
+        Applies volatility-aware AI-driven trailing stop-loss with leverage adjustments.
         """
         # ✅ FIX: Wrap the loop with `list()` to prevent `RuntimeError`.
         for symbol, trade in list(open_positions.items()):
@@ -122,20 +122,81 @@ class Strategy:
                 continue
 
             current_price = historical_data[symbol]['close'].iloc[-1]
+            data = historical_data[symbol]
             
-            # Placeholder for TSL logic
-            current_pnl = (current_price - trade['entry_price']) / trade['entry_price'] if trade['direction'] == 'BUY' else (trade['entry_price'] - current_price) / trade['entry_price']
-            new_tsl_percent = self.ai_module.get_ai_tsl_percentage(symbol, current_pnl)
-
-            # Update TSL based on new percentage
-            new_tsl = current_price * (1 - new_tsl_percent / 100)
-            if new_tsl > trade['trailing_sl']:
-                self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
-
-            # Check if TSL has been hit
-            if current_price <= trade['trailing_sl']:
-                self.order_manager.close_order(symbol, current_price)
-                logger.info(f"AI-TSL hit for {symbol}. Position closed at {current_price}.")
+            # Calculate volatility (standard deviation of recent price changes)
+            if len(data) >= 10:
+                price_changes = data['close'].pct_change().dropna()
+                volatility = price_changes.std() * 100  # Convert to percentage
+            else:
+                volatility = 2.0  # Default volatility if insufficient data
+            
+            # Calculate current PnL percentage
+            if trade['direction'] == 'BUY':
+                current_pnl = (current_price - trade['entry_price']) / trade['entry_price'] * 100
+                pnl_adjustment = max(0.5, min(2.0, current_pnl * 0.1))  # PnL-based adjustment
+            else:  # SELL
+                current_pnl = (trade['entry_price'] - current_price) / trade['entry_price'] * 100
+                pnl_adjustment = max(0.5, min(2.0, current_pnl * 0.1))
+            
+            # Get base TSL percentage from AI module
+            base_tsl = self.ai_module.get_ai_tsl_percentage(symbol, current_pnl)
+            
+            # Volatility-aware TSL adjustments
+            if volatility > 3.0:  # High volatility - tighter TSL
+                volatility_multiplier = 0.7
+                logger.info(f"High volatility ({volatility:.2f}%) detected for {symbol}, tightening TSL")
+            elif volatility < 1.0:  # Low volatility - looser TSL
+                volatility_multiplier = 1.3
+                logger.info(f"Low volatility ({volatility:.2f}%) detected for {symbol}, loosening TSL")
+            else:  # Normal volatility
+                volatility_multiplier = 1.0
+            
+            # Leverage-aware adjustments
+            leverage = trade.get('leverage', 1.0)
+            if leverage > 5.0:  # High leverage - much tighter TSL
+                leverage_multiplier = 0.5
+                logger.info(f"High leverage ({leverage}x) detected for {symbol}, aggressive TSL tightening")
+            elif leverage > 2.0:  # Medium leverage - tighter TSL
+                leverage_multiplier = 0.8
+                logger.info(f"Medium leverage ({leverage}x) detected for {symbol}, moderate TSL tightening")
+            else:  # Low leverage - normal TSL
+                leverage_multiplier = 1.0
+            
+            # Calculate final TSL percentage
+            final_tsl_percent = base_tsl * volatility_multiplier * leverage_multiplier
+            
+            # Ensure TSL is within reasonable bounds
+            final_tsl_percent = max(0.2, min(5.0, final_tsl_percent))  # Between 0.2% and 5%
+            
+            # Calculate new TSL price
+            if trade['direction'] == 'BUY':
+                new_tsl = current_price * (1 - final_tsl_percent / 100)
+                current_tsl = trade.get('trailing_sl', 0)
+                
+                # Only update if new TSL is higher (better protection) or if no TSL exists
+                if new_tsl > current_tsl or current_tsl == 0:
+                    self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
+                    logger.info(f"AI-TSL updated for {symbol}: {final_tsl_percent:.2f}% (vol:{volatility:.2f}, lev:{leverage}, pnl:{current_pnl:.2f}%)")
+                
+                # Check if TSL has been hit
+                if current_price <= trade.get('trailing_sl', 0):
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"AI-TSL hit for {symbol}. Position closed at {current_price}.")
+                    
+            else:  # SELL direction
+                new_tsl = current_price * (1 + final_tsl_percent / 100)
+                current_tsl = trade.get('trailing_sl', float('inf'))
+                
+                # Only update if new TSL is lower (better protection for shorts) or if no TSL exists
+                if new_tsl < current_tsl or current_tsl == float('inf'):
+                    self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
+                    logger.info(f"AI-TSL updated for {symbol} (SHORT): {final_tsl_percent:.2f}% (vol:{volatility:.2f}, lev:{leverage}, pnl:{current_pnl:.2f}%)")
+                
+                # Check if TSL has been hit for shorts
+                if current_price >= trade.get('trailing_sl', float('inf')):
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"AI-TSL hit for {symbol} (SHORT). Position closed at {current_price}.")
 
 
     def check_trend_flip_exit(self, open_positions, historical_data):

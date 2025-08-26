@@ -17,6 +17,7 @@ src/redis_store.py
 tests/test_backtest.py
 tests/test_live_stream.py
 tests/test_strategy.py
+tests/test_strategy_ai.py
 tests/test_utils.py
 tests/test_integration.py
 
@@ -54,9 +55,9 @@ redis_store.py – Redis central memory hub: AI comments, trade logs, live signa
 test_backtest.py – Unit/integration tests for backtesting logic.
 test_live_stream.py – Unit/integration tests for live data ingestion & streaming.
 test_strategy.py – Unit/integration tests for strategy logic: trade signals, AI scoring, TSL, SL/TGT.
+test_strategy_ai.py - comprehensive AI-TSL tests
 test_utils.py – Unit tests for utilities/helpers.
 test_integration.py - An integration test ensures that capital allocation, trade entry/exit, TSL, trend-flip, and PnL all work together with no broken assumptions.
-
 
 PS D:\dts_intraday_ai> dir 
     Directory: D:\dts_intraday_ai

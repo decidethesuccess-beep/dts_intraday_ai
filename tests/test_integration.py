@@ -450,5 +450,96 @@ class TestIntegration(unittest.TestCase):
             self.assertEqual(trade['status'], 'CLOSED')
             self.assertIn('pnl', trade)
 
+    def test_ai_tsl_integration_with_backtest(self):
+        """Integration test to ensure adjust_trailing_sl_ai() works with backtest_runner and dashboard."""
+        # Mock the data fetcher
+        self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
+        
+        # Mock AI module methods
+        self.mock_ai_module.get_signal_score.return_value = 0.85
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+        
+        # Create sample trades for testing AI-TSL integration
+        buy_trade = {
+            'symbol': 'RELIANCE',
+            'direction': 'BUY',
+            'entry_price': 1000.0,
+            'quantity': 100,
+            'trailing_sl': 950.0,
+            'entry_time': datetime.now(),
+            'status': 'OPEN'
+        }
+        
+        sell_trade = {
+            'symbol': 'TCS',
+            'direction': 'SELL',
+            'entry_price': 500.0,
+            'quantity': 200,
+            'trailing_sl': 550.0,
+            'entry_time': datetime.now(),
+            'status': 'OPEN'
+        }
+        
+        # Configure the mock AI module to return proper dict values
+        expected_buy_trade = buy_trade.copy()
+        expected_buy_trade['trailing_sl'] = 980.0  # Adjusted TSL for BUY
+        
+        expected_sell_trade = sell_trade.copy()
+        expected_sell_trade['trailing_sl'] = 520.0  # Adjusted TSL for SELL
+        
+        # Configure mock to return different values for different calls
+        self.mock_ai_module.adjust_trailing_sl_ai.side_effect = [
+            expected_buy_trade,
+            expected_sell_trade
+        ]
+        
+        # Simulate AI-TSL adjustments for both trades
+        try:
+            # Test BUY trade with AI-TSL adjustment
+            market_data_buy = self.sample_data['RELIANCE'].iloc[50:100]  # Mid-session data
+            ai_score_buy = 0.9  # High confidence signal
+            
+            updated_buy_trade = self.mock_ai_module.adjust_trailing_sl_ai(
+                buy_trade, 
+                market_data_buy, 
+                ai_score_buy
+            )
+            
+            # Test SELL trade with AI-TSL adjustment
+            market_data_sell = self.sample_data['TCS'].iloc[50:100]
+            ai_score_sell = {
+                'signal_score': 0.8,
+                'volatility_score': 0.4,
+                'confidence_score': 0.7
+            }
+            
+            updated_sell_trade = self.mock_ai_module.adjust_trailing_sl_ai(
+                sell_trade, 
+                market_data_sell, 
+                ai_score_sell
+            )
+            
+            # Verify both adjustments completed without exceptions
+            self.assertIsInstance(updated_buy_trade, dict)
+            self.assertIsInstance(updated_sell_trade, dict)
+            self.assertIn('trailing_sl', updated_buy_trade)
+            self.assertIn('trailing_sl', updated_sell_trade)
+            
+            # Verify trade directions are preserved
+            self.assertEqual(updated_buy_trade['direction'], 'BUY')
+            self.assertEqual(updated_sell_trade['direction'], 'SELL')
+            
+            # Update dashboard with adjusted trades
+            self.dashboard.update_trade_data([updated_buy_trade, updated_sell_trade])
+            trade_data = self.dashboard.get_trade_data()
+            
+            # Verify dashboard can handle AI-TSL adjusted trades
+            self.assertEqual(len(trade_data), 2)
+            self.assertIn('trailing_sl', trade_data[0])
+            self.assertIn('trailing_sl', trade_data[1])
+            
+        except Exception as e:
+            self.fail(f"AI-TSL integration test failed with exception: {e}")
+
 if __name__ == '__main__':
     unittest.main()

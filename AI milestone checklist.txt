@@ -1,0 +1,110 @@
+Here’s a full AI milestone checklist based on the latest merged Phase 2 `strategy_spec.md` (AI + Webhook scope). This is ready for Gemini to track and execute:
+
+
+ AI Milestone Checklist – DTS Intraday AI Trading System
+
+A. AIDriven Trade Management
+
+1. AITrailing Stop Loss (AITSL)
+
+    Design adaptive TSL logic based on AI score changes and market volatility.
+    Support BUY and SELL trades with different thresholds.
+    Integrate with strategy core to dynamically tighten or loosen stops.
+    Backtest impact of AITSL vs fixed TSL.
+
+2. AI Stop Loss / Target Adjustment
+
+    Adjust SL and TGT based on live AI scoring and news sentiment.
+    Implement riskreduction behavior on adverse news.
+
+3. Trend Reversal + AI Confirmation
+
+    Combine AI signals with trend reversal exits to reduce false reversals.
+
+
+B. Capital and Leverage Controls
+4\. AIBased Leverage and Capital Allocation
+
+ AI decides leverage up/down within risk cap (daily cap, max exposure).
+ Prioritize strongest AIscored trades when all 10 slots are full (replace weakest).
+ Optimize capital rotation with AI ranking.
+
+5. Market Regime Detection
+
+    AI detects rangebound/volatile days.
+    Switch to preservation/scalp mode automatically.
+
+
+
+C. External Signals and Automation
+6\. Webhook Integration
+
+ Implement webhooks to trigger AI events (news updates, risk alerts).
+ Enable optional AI signal pushes to dashboard/alerts.
+
+7. AI News Sentiment Layer
+
+    Integrate sentiment feed (skip BUY on negative news, favor SELL).
+    Optional NLP scoring for breaking news and AI trade adjustment.
+
+
+D. Continuous Learning and Safety
+8\. RollingWindow AI Training
+
+ Retrain AI models on fresh data while avoiding overfitting.
+ Maintain backtesting environment to validate AI updates.
+
+9. AI Safety Layer Enforcement
+
+    Daily leverage cap, exposure cap, holiday/session tightening.
+    Profitlock behavior (tighten stops once capital target met).
+
+
+E. Dashboard and Monitoring
+10\. AI Metrics in Dashboard
+\ Visualize AI scores, regime, TSL movement, leverage decisions.
+\ Add filters for AIonly trades.
+
+11. Webhook Testing & Sandbox Mode
+
+     Run dry tests for all webhook triggers and AI events.
+
+
+Would you like me to prioritize and order these milestones (high → low impact) or convert this into a Trello/Jirastyle roadmap for execution?
+
+Here’s the prioritized AI milestone checklist (high → low impact) for your DTS Intraday AI Trading System:
+
+
+ 1. HighImpact Core AI Functions (Immediate Focus)
+
+1. AITrailing Stop Loss (AITSL) – Adaptive TSL logic based on AI scores and volatility.
+2. AI Stop Loss / Target Adjustment – AI modifies SL/TGT dynamically, includes news sentiment.
+3. Trend Reversal + AI Confirmation – Reduce false exits by combining AI scoring with reversal checks.
+
+
+ 2. Risk & Capital Management (Next Critical Layer)
+
+4. AIBased Leverage and Capital Allocation – AI adjusts leverage and replaces weakest trades when slots full.
+5. Market Regime Detection – Switches system into scalp/preservation mode on flat/volatile days.
+
+
+ 3. External Signals & Automation (Enablement Layer)
+
+6. Webhook Integration – AI events trigger updates and risk alerts.
+7. AI News Sentiment Layer – NLPbased sentiment scoring to filter or prioritize trades.
+
+
+ 4. Continuous Learning & Safety (Ongoing Enhancements)
+
+8. RollingWindow AI Training – Retrain models with fresh data, backtest for validation.
+9. AI Safety Layer Enforcement – Daily leverage caps, exposure limits, holiday/session tightening.
+
+
+ 5. Dashboard & Visualization (UserFacing)
+
+10. AI Metrics in Dashboard – Display AI scores, regime, leverage, TSL decisions.
+11. Webhook Testing & Sandbox Mode – Full dry run of AI/webhook events.
+
+
+Would you like me to map these into a timeline (Phase 2, 3, 4) or create a Kanbanready task list with dependencies for Gemini?
+

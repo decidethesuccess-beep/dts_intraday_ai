@@ -131,3 +131,63 @@ class AIModule:
         elif signal_score > 0.7:
             return 5.0
         return 1.0
+
+    def adjust_trailing_sl_ai(self, trade, market_data, ai_score):
+        """
+        Dynamically adjusts trailing stop-loss levels based on AI scoring, volatility, 
+        leverage, and market regime.
+        
+        Args:
+            trade (dict): Current trade object with entry_price, direction, trailing_sl, etc.
+            market_data (pd.DataFrame): Current market data snapshot
+            ai_score (float or dict): AI signal score or dict with multiple scores
+            
+        Returns:
+            dict: Updated trade object with adjusted trailing_sl
+            
+        Future Enhancements:
+        - News sentiment integration for TSL adjustment
+        - Market regime detection (trending vs ranging)
+        - Dynamic leverage based on AI confidence
+        - Volatility-based TSL tightening/loosening
+        """
+        # Placeholder implementation - return trade with minimal adjustment
+        updated_trade = trade.copy()
+        
+        # Simple TSL adjustment based on AI score
+        if isinstance(ai_score, (int, float)):
+            score = ai_score
+        else:
+            # If ai_score is a dict, extract the main score
+            score = ai_score.get('signal_score', 0.5) if isinstance(ai_score, dict) else 0.5
+        
+        # Basic TSL adjustment logic (placeholder)
+        current_price = market_data['close'].iloc[-1] if not market_data.empty else trade['entry_price']
+        
+        if trade['direction'] == 'BUY':
+            # Tighter TSL for high confidence signals
+            if score > 0.8:
+                new_tsl = current_price * 0.98  # 2% TSL for high confidence
+            elif score > 0.6:
+                new_tsl = current_price * 0.97  # 3% TSL for medium confidence
+            else:
+                new_tsl = current_price * 0.95  # 5% TSL for low confidence
+            
+            # Only update if new TSL is higher (better protection)
+            if new_tsl > trade.get('trailing_sl', 0):
+                updated_trade['trailing_sl'] = new_tsl
+                
+        elif trade['direction'] == 'SELL':
+            # For short positions, TSL is below current price
+            if score > 0.8:
+                new_tsl = current_price * 1.02  # 2% TSL for high confidence
+            elif score > 0.6:
+                new_tsl = current_price * 1.03  # 3% TSL for medium confidence
+            else:
+                new_tsl = current_price * 1.05  # 5% TSL for low confidence
+            
+            # Only update if new TSL is lower (better protection for shorts)
+            if new_tsl < trade.get('trailing_sl', float('inf')):
+                updated_trade['trailing_sl'] = new_tsl
+        
+        return updated_trade
