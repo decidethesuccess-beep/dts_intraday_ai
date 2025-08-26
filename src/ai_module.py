@@ -191,3 +191,46 @@ class AIModule:
                 updated_trade['trailing_sl'] = new_tsl
         
         return updated_trade
+
+    def get_sentiment_score(self, symbol: str) -> float:
+        """
+        Mock sentiment score for a symbol. In a real system, this would come from news analysis.
+        Returns a score between -1.0 (very negative) and 1.0 (very positive).
+        """
+        # Mock implementation: Cycle through scores for testing purposes
+        if "RELIANCE" in symbol:
+            return 0.7  # Positive
+        elif "TCS" in symbol:
+            return -0.6  # Negative
+        else:
+            return 0.1  # Neutral
+
+    def adjust_sl_target_sentiment_aware(self, sl_price: float, tgt_price: float, direction: str, sentiment_score: float) -> tuple[float, float]:
+        """
+        Adjusts SL and TGT based on sentiment.
+        - Positive sentiment for BUY: Looser SL, higher TGT.
+        - Negative sentiment for BUY: Tighter SL, lower TGT.
+        - Positive sentiment for SELL: Tighter SL, lower TGT.
+        - Negative sentiment for SELL: Looser SL, higher TGT.
+        """
+        if direction == 'BUY':
+            sl_adj = 1 - (sentiment_score * 0.1)  # Positive sentiment -> smaller reduction -> looser SL
+            tgt_adj = 1 + (sentiment_score * 0.1)  # Positive sentiment -> higher target
+        else:  # SELL
+            sl_adj = 1 + (sentiment_score * 0.1)  # Positive sentiment -> bigger addition -> tighter SL
+            tgt_adj = 1 - (sentiment_score * 0.1)  # Positive sentiment -> lower target
+
+        adjusted_sl = sl_price * sl_adj
+        adjusted_tgt = tgt_price * tgt_adj
+        
+        logging.info(f"Sentiment ({sentiment_score:.2f}) adjusted SL from {sl_price:.2f} to {adjusted_sl:.2f} and TGT from {tgt_price:.2f} to {adjusted_tgt:.2f}")
+        
+        return adjusted_sl, adjusted_tgt
+
+    def confirm_trend_reversal(self, symbol: str, data: pd.DataFrame) -> bool:
+        """
+        Uses AI score to confirm if a trend reversal is significant enough to exit.
+        """
+        score = self.get_signal_score(symbol, data)
+        # Require a reasonably strong counter-signal to confirm reversal
+        return score > 0.6

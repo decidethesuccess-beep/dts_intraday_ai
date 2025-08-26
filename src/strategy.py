@@ -96,21 +96,33 @@ class Strategy:
                 continue
 
             current_price = historical_data[symbol]['close'].iloc[-1]
-            sl_price = trade['entry_price'] * (1 - self.sl_percent / 100)
-            tgt_price = trade['entry_price'] * (1 + self.target_percent / 100)
+            
+            # Get base SL and TGT prices
+            base_sl_price = trade['entry_price'] * (1 - self.sl_percent / 100)
+            base_tgt_price = trade['entry_price'] * (1 + self.target_percent / 100)
 
-            if trade['direction'] == 'BUY' and current_price <= sl_price:
-                self.order_manager.close_order(symbol, current_price)
-                logger.info(f"Position for {symbol} closed due to Hard SL at {current_price}.")
-            elif trade['direction'] == 'BUY' and current_price >= tgt_price:
-                self.order_manager.close_order(symbol, current_price)
-                logger.info(f"Position for {symbol} closed due to Hard TGT at {current_price}.")
-            elif trade['direction'] == 'SELL' and current_price >= sl_price:
-                self.order_manager.close_order(symbol, current_price)
-                logger.info(f"Position for {symbol} closed due to Hard SL at {current_price}.")
-            elif trade['direction'] == 'SELL' and current_price <= tgt_price:
-                self.order_manager.close_order(symbol, current_price)
-                logger.info(f"Position for {symbol} closed due to Hard TGT at {current_price}.")
+            # Get sentiment score for sentiment-aware adjustment
+            sentiment_score = self.ai_module.get_sentiment_score(symbol)
+
+            # Adjust SL/TGT based on sentiment
+            sl_price, tgt_price = self.ai_module.adjust_sl_target_sentiment_aware(
+                base_sl_price, base_tgt_price, trade['direction'], sentiment_score
+            )
+
+            if trade['direction'] == 'BUY':
+                if current_price <= sl_price:
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"Position for {symbol} closed due to Hard SL (AI-adjusted) at {current_price}.")
+                elif current_price >= tgt_price:
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"Position for {symbol} closed due to Hard TGT (AI-adjusted) at {current_price}.")
+            elif trade['direction'] == 'SELL':
+                if current_price >= sl_price: # For SELL, SL is above entry
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"Position for {symbol} closed due to Hard SL (AI-adjusted) at {current_price}.")
+                elif current_price <= tgt_price: # For SELL, TGT is below entry
+                    self.order_manager.close_order(symbol, current_price)
+                    logger.info(f"Position for {symbol} closed due to Hard TGT (AI-adjusted) at {current_price}.")
 
     def check_ai_tsl_exit(self, open_positions, historical_data):
         """
@@ -201,7 +213,7 @@ class Strategy:
 
     def check_trend_flip_exit(self, open_positions, historical_data):
         """
-        Checks for a trend flip signal to exit a position early.
+        Checks for a trend flip signal, with AI confirmation, to exit a position early.
         """
         # ✅ FIX: Wrap the loop with `list()` to prevent `RuntimeError`.
         for symbol, trade in list(open_positions.items()):
@@ -211,12 +223,23 @@ class Strategy:
             data = historical_data[symbol]
             current_trend = self.ai_module.get_trend_direction(data)
             
+            exit_condition = False
             if trade['direction'] == 'BUY' and current_trend == 'DOWN':
-                self.order_manager.close_order(symbol, data['close'].iloc[-1])
-                logger.info(f"Position for {symbol} closed due to trend flip (BUY to DOWN).")
+                if self.ai_module.confirm_trend_reversal(symbol, data):
+                    logger.info(f"AI confirmed trend flip for {symbol} (BUY to DOWN).")
+                    exit_condition = True
+                else:
+                    logger.info(f"AI denied trend flip for {symbol} (BUY to DOWN). Holding position.")
             elif trade['direction'] == 'SELL' and current_trend == 'UP':
+                if self.ai_module.confirm_trend_reversal(symbol, data):
+                    logger.info(f"AI confirmed trend flip for {symbol} (SELL to UP).")
+                    exit_condition = True
+                else:
+                    logger.info(f"AI denied trend flip for {symbol} (SELL to UP). Holding position.")
+            
+            if exit_condition:
                 self.order_manager.close_order(symbol, data['close'].iloc[-1])
-                logger.info(f"Position for {symbol} closed due to trend flip (SELL to UP).")
+                logger.info(f"Position for {symbol} closed due to AI-confirmed trend flip.")
 
     def check_entry_signals(self, timestamp: datetime, historical_data: dict):
         """

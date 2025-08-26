@@ -137,6 +137,7 @@ class TestAITSLStrategy(unittest.TestCase):
         
         # Create high volatility market data
         high_vol_data = self._create_volatile_market_data(symbol, high_volatility=True)
+        high_vol_data.loc[high_vol_data.index[-1], 'close'] = current_price
         
         # Mock position with high leverage
         self.mock_positions[symbol] = {
@@ -293,16 +294,16 @@ class TestAITSLStrategy(unittest.TestCase):
             
             # Higher leverage should result in tighter TSL
             if leverage > 5.0:
-                # High leverage: very tight TSL
-                expected_min_tsl = current_price * 0.99  # 1% TSL for high leverage
+                # High leverage: very tight TSL (0.7% TSL)
+                expected_min_tsl = current_price * (1 - 0.7 / 100)
                 self.assertGreaterEqual(new_tsl, expected_min_tsl)
             elif leverage > 2.0:
-                # Medium leverage: moderate TSL
-                expected_min_tsl = current_price * 0.985  # 1.5% TSL for medium leverage
+                # Medium leverage: moderate TSL (1.12% TSL)
+                expected_min_tsl = current_price * (1 - 1.12 / 100)
                 self.assertGreaterEqual(new_tsl, expected_min_tsl)
             else:
-                # Low leverage: normal TSL
-                expected_min_tsl = current_price * 0.98  # 2% TSL for low leverage
+                # Low leverage: normal TSL (1.4% TSL)
+                expected_min_tsl = current_price * (1 - 1.4 / 100)
                 self.assertGreaterEqual(new_tsl, expected_min_tsl)
 
     def test_ai_tsl_bounds_enforcement(self):
@@ -394,3 +395,64 @@ class TestAITSLStrategy(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_ai_sl_target_adjustment_buy_positive_sentiment(self):
+        """Test AI SL/TGT adjustment for a BUY trade with positive sentiment."""
+        symbol = 'RELIANCE'
+        entry_price = 1000.0
+        self.mock_positions[symbol] = {'direction': 'BUY', 'entry_price': entry_price}
+        self.mock_ai_module.get_sentiment_score.return_value = 0.8  # Strong positive
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (970.0, 1120.0) # Looser SL, higher TGT
+
+        self.strategy.check_hard_sl_target(self.mock_positions, {'RELIANCE': pd.DataFrame({'close': [1050]})})
+
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.assert_called()
+        self.mock_order_manager.close_order.assert_not_called()
+
+    def test_ai_sl_target_adjustment_buy_negative_sentiment(self):
+        """Test AI SL/TGT adjustment for a BUY trade with negative sentiment."""
+        symbol = 'RELIANCE'
+        entry_price = 1000.0
+        self.mock_positions[symbol] = {'direction': 'BUY', 'entry_price': entry_price}
+        self.mock_ai_module.get_sentiment_score.return_value = -0.7 # Strong negative
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (995.0, 1050.0) # Tighter SL, lower TGT
+
+        self.strategy.check_hard_sl_target(self.mock_positions, {'RELIANCE': pd.DataFrame({'close': [994]})})
+
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.assert_called()
+        self.mock_order_manager.close_order.assert_called_with(symbol, 994)
+
+    def test_ai_sl_target_adjustment_sell_negative_sentiment(self):
+        """Test AI SL/TGT adjustment for a SELL trade with negative sentiment."""
+        symbol = 'TCS'
+        entry_price = 1200.0
+        self.mock_positions[symbol] = {'direction': 'SELL', 'entry_price': entry_price}
+        self.mock_ai_module.get_sentiment_score.return_value = -0.8 # Strong negative
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (1230.0, 1100.0) # Looser SL, higher TGT
+
+        self.strategy.check_hard_sl_target(self.mock_positions, {'TCS': pd.DataFrame({'close': [1150]})})
+
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.assert_called()
+        self.mock_order_manager.close_order.assert_not_called()
+
+    def test_trend_flip_exit_with_ai_confirmation(self):
+        """Test trend flip exit occurs when AI confirms."""
+        symbol = 'INFY'
+        self.mock_positions[symbol] = {'direction': 'BUY', 'entry_price': 1500}
+        self.mock_ai_module.get_trend_direction.return_value = 'DOWN'
+        self.mock_ai_module.confirm_trend_reversal.return_value = True
+
+        self.strategy.check_trend_flip_exit(self.mock_positions, {'INFY': pd.DataFrame({'close': [1450]})})
+
+        self.mock_order_manager.close_order.assert_called_with(symbol, 1450)
+
+    def test_trend_flip_exit_without_ai_confirmation(self):
+        """Test trend flip exit is prevented when AI denies."""
+        symbol = 'INFY'
+        self.mock_positions[symbol] = {'direction': 'BUY', 'entry_price': 1500}
+        self.mock_ai_module.get_trend_direction.return_value = 'DOWN'
+        self.mock_ai_module.confirm_trend_reversal.return_value = False
+
+        self.strategy.check_trend_flip_exit(self.mock_positions, {'INFY': pd.DataFrame({'close': [1450]})})
+
+        self.mock_order_manager.close_order.assert_not_called()

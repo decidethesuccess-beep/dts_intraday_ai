@@ -543,3 +543,29 @@ class TestIntegration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+    def test_ai_sl_target_integration_with_backtest(self):
+        """Integration test for sentiment-aware SL/TGT adjustments."""
+        self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
+        symbol = 'RELIANCE'
+
+        # Create a BUY position
+        mock_position = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': 1000.0,
+            'quantity': 100,
+            'status': 'OPEN'
+        }
+        self.mock_order_manager.get_open_positions.return_value = {symbol: mock_position}
+
+        # Mock AI module for sentiment
+        self.mock_ai_module.get_sentiment_score.return_value = -0.9 # Strong negative sentiment
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (998.0, 1010.0) # Tight SL, low TGT
+
+        # Run exit condition check with price hitting the adjusted SL
+        historical_data = {symbol: pd.DataFrame({'close': [997]})}
+        self.strategy.check_hard_sl_target({symbol: mock_position}, historical_data)
+
+        # Verify position was closed due to sentiment-adjusted SL
+        self.mock_order_manager.close_order.assert_called_with(symbol, 997)
