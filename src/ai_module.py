@@ -33,7 +33,7 @@ class AIModule:
         self.redis_store = redis_store
         self.trend_data = {}
 
-    def get_signal_score(self, symbol, data):
+    def get_signal_score(self, symbol, data, sentiment_score: float):
         """
         Scores a potential trade signal based on momentum, volume, and news sentiment.
         
@@ -43,6 +43,7 @@ class AIModule:
         Args:
             symbol (str): The stock symbol.
             data (pd.DataFrame): The historical OHLCV data for the symbol.
+            sentiment_score (float): The sentiment score for the symbol.
             
         Returns:
             float: A score representing the signal strength (e.g., 0.0 to 1.0).
@@ -58,7 +59,15 @@ class AIModule:
             score = 0.5 # Default score
             if last_price > first_price:
                 score = 0.8 # A stronger score for an upward trend
+
+            # Incorporate sentiment: boost score for positive sentiment, reduce for negative
+            if sentiment_score > 0.5:
+                score += 0.1 # Small boost for strong positive news
+            elif sentiment_score < -0.5:
+                score -= 0.2 # Larger penalty for strong negative news
             
+            score = max(0.0, min(1.0, score)) # Ensure score stays within 0-1 range
+
             # This is where you would save the score to Redis
             self.redis_store.set(f"ai_score:{symbol}", score)
             
@@ -114,23 +123,33 @@ class AIModule:
             return 0.5  # Lock in half a percent profit
         return 1.0
 
-    def get_ai_leverage_multiplier(self, symbol, signal_score):
+    def get_ai_leverage_multiplier(self, symbol, signal_score, sentiment_score: float):
         """
-        Determines the AI-driven leverage multiplier based on signal strength.
+        Determines the AI-driven leverage multiplier based on signal strength and sentiment.
         
         Args:
             symbol (str): The stock symbol.
             signal_score (float): The signal score from get_signal_score.
+            sentiment_score (float): The sentiment score for the symbol.
             
         Returns:
             float: The leverage multiplier.
         """
         # Placeholder logic: leverage increases with signal strength.
         if signal_score > 0.9:
-            return 10.0
+            leverage = 10.0
         elif signal_score > 0.7:
-            return 5.0
-        return 1.0
+            leverage = 5.0
+        else:
+            leverage = 1.0
+
+        # Adjust leverage based on sentiment
+        if sentiment_score > 0.7:
+            leverage *= 1.2 # Increase leverage for very positive news
+        elif sentiment_score < -0.7:
+            leverage *= 0.5 # Reduce leverage for very negative news
+        
+        return leverage
 
     def adjust_trailing_sl_ai(self, trade, market_data, ai_score):
         """

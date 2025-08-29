@@ -73,6 +73,18 @@ class TestStrategy(unittest.TestCase):
         self.mock_ai_module = MagicMock()
         self.mock_news_filter = MagicMock()
 
+        # Mock adjust_sl_target_sentiment_aware to return expected values
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (98.0, 110.0) # Example values
+
+        # Mock news_filter.get_and_analyze_sentiment to return a default sentiment score
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = 0.1 # Neutral sentiment for tests
+
+        # Mock get_signal_score to match its new signature
+        self.mock_ai_module.get_signal_score.return_value = 0.8
+
+        # Mock get_ai_leverage_multiplier to match its new signature
+        self.mock_ai_module.get_ai_leverage_multiplier.return_value = 1.0 # Default leverage
+
         # ✅ FIX: Create a mock dictionary to simulate open positions and make the mock stateful.
         self.mock_positions = {}
         self.mock_order_manager.get_open_positions.return_value = self.mock_positions
@@ -282,9 +294,6 @@ class TestStrategy(unittest.TestCase):
         for i in range(MAX_ACTIVE_POSITIONS):
             self.mock_positions[f'SYMBOL{i}'] = {'symbol': f'SYMBOL{i}', 'direction': 'BUY', 'entry_price': 100.0}
 
-        # Mock the signal score to be above the threshold
-        self.mock_ai_module.get_signal_score.return_value = 0.8
-        
         # Mock historical data for a new symbol
         mock_historical_data = {'SYMBOL11': pd.DataFrame([{'close': 100.0}])}
 

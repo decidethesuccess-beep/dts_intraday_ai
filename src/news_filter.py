@@ -15,6 +15,8 @@ import requests
 import os
 import random
 from typing import Dict, Any, List, Optional
+from datetime import datetime, timedelta
+import finnhub
 
 from src.redis_store import RedisStore
 
@@ -30,8 +32,12 @@ class NewsFilter:
     """
     def __init__(self, redis_store: RedisStore):
         self.redis_store = redis_store
-        if not NEWS_API_KEY:
-            log.warning("NEWS_API_KEY not found. News filtering will be simulated.")
+        self.finnhub_api_key = os.getenv('FINNHUB_API_KEY')
+        if not self.finnhub_api_key:
+            log.warning("FINNHUB_API_KEY not found. Finnhub news fetching will be disabled.")
+            self.finnhub_client = None
+        else:
+            self.finnhub_client = finnhub.Client(api_key=self.finnhub_api_key)
 
     def get_and_analyze_sentiment(self, symbol: str):
         """
@@ -53,16 +59,33 @@ class NewsFilter:
 
     def _fetch_news_headlines(self, symbol: str) -> List[str]:
         """
-        Placeholder for an API call to fetch recent news.
+        Fetches recent news headlines for a given symbol from Finnhub.
         """
-        # In a real scenario, this would use the NEWS_API_KEY and a real news API.
-        # For now, it returns a mock list of headlines.
-        mock_headlines = [
-            f"{symbol} announces massive new project.",
-            f"Analysts are concerned about {symbol}'s recent earnings.",
-            f"Positive market sentiment for the {symbol} sector."
-        ]
-        return random.sample(mock_headlines, random.randint(0, len(mock_headlines)))
+        if not self.finnhub_client:
+            log.warning("Finnhub client not initialized. Returning mock headlines.")
+            # Fallback to mock headlines if API key is missing
+            mock_headlines = [
+                f"{symbol} announces massive new project.",
+                f"Analysts are concerned about {symbol}'s recent earnings.",
+                f"Positive market sentiment for the {symbol} sector."
+            ]
+            return random.sample(mock_headlines, random.randint(0, len(mock_headlines)))
+
+        try:
+            # Fetch company news for the symbol for the last 7 days
+            # Finnhub expects symbol in uppercase
+            from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            to_date = datetime.now().strftime('%Y-%m-%d')
+            
+            # Use company_news for specific symbol news
+            news_items = self.finnhub_client.company_news(symbol.upper(), _from=from_date, to=to_date)
+            
+            headlines = [item['headline'] for item in news_items if 'headline' in item]
+            log.info(f"Fetched {len(headlines)} news headlines for {symbol} from Finnhub.")
+            return headlines
+        except Exception as e:
+            log.error(f"Error fetching news from Finnhub for {symbol}: {e}")
+            return [] # Return empty list on error
 
     def _run_nlp_model(self, headlines: List[str]) -> float:
         """
