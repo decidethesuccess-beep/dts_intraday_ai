@@ -243,10 +243,52 @@ class Strategy:
 
     def check_entry_signals(self, timestamp: datetime, historical_data: dict):
         """
-        Checks for new trade entry signals based on AI scoring.
+        Checks for new trade entry signals based on AI scoring and news sentiment.
         """
-        # Placeholder for entry logic
-        pass
+        if len(self.order_manager.get_open_positions()) >= self.max_active_positions:
+            logger.info("Max active positions reached. Skipping entry signal check.")
+            return
+
+        for symbol, data in historical_data.items():
+            if data.empty:
+                continue
+
+            # 1. Get News Sentiment
+            sentiment_score = self.news_filter.get_and_analyze_sentiment(symbol)
+            logger.info(f"Sentiment for {symbol}: {sentiment_score:.2f}")
+
+            # Skip BUY if sentiment is too negative
+            if sentiment_score < -0.5: # Threshold for negative sentiment
+                logger.info(f"Skipping BUY for {symbol} due to negative sentiment ({sentiment_score:.2f}).")
+                # Consider favoring SELL if the strategy supports it and conditions are met
+                # For now, just skip BUY
+                continue
+
+            # 2. Get AI Signal Score (pass sentiment to AI module)
+            signal_score = self.ai_module.get_signal_score(symbol, data, sentiment_score)
+            logger.info(f"Signal score for {symbol}: {signal_score:.2f}")
+
+            # 3. Determine Trade Direction (AI-driven)
+            trade_direction = self.ai_module.get_trade_direction(symbol) # This method needs to be updated to use sentiment
+
+            if trade_direction and signal_score > 0.7: # Example threshold for entry
+                # 4. Get AI Leverage Multiplier (pass sentiment to AI module)
+                leverage_multiplier = self.ai_module.get_ai_leverage_multiplier(symbol, signal_score, sentiment_score)
+                logger.info(f"Leverage for {symbol}: {leverage_multiplier:.2f}x")
+
+                # 5. Calculate position size
+                entry_price = data['close'].iloc[-1]
+                # Assuming a method to calculate quantity based on capital and leverage
+                # This needs to be implemented or called from order_manager
+                # For now, a placeholder quantity
+                quantity = 10 # Placeholder
+
+                # 6. Place Order
+                success = self.order_manager.place_order(symbol, trade_direction, quantity, entry_price, leverage=leverage_multiplier)
+                if success:
+                    logger.info(f"Placed {trade_direction} order for {symbol} at {entry_price} with {leverage_multiplier}x leverage.")
+                else:
+                    logger.warning(f"Failed to place {trade_direction} order for {symbol}.")
 
     def close_all_positions_eod(self):
         """

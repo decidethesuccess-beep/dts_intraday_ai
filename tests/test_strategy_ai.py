@@ -80,14 +80,18 @@ class TestAITSLStrategy(unittest.TestCase):
             news_filter=self.mock_news_filter
         )
         
-        # Mock logging
-        self.mock_logger = MagicMock()
-        Strategy.logger = self.mock_logger
+        # Correctly mock logging
+        self.patcher_logger = patch('src.strategy.logger')
+        self.mock_logger = self.patcher_logger.start()
 
     @classmethod
     def tearDownClass(cls):
         """Clean up resources."""
         cls.patcher.stop()
+
+    def tearDown(self):
+        """Clean up resources after each test."""
+        self.patcher_logger.stop()
 
     def _create_volatile_market_data(self, symbol, high_volatility=True):
         """Create market data with specified volatility characteristics."""
@@ -392,10 +396,6 @@ class TestAITSLStrategy(unittest.TestCase):
         self.assertIsInstance(new_tsl, (int, float))
         self.assertGreater(new_tsl, 395.0)  # Should be tighter than original
 
-
-if __name__ == '__main__':
-    unittest.main()
-
     def test_ai_sl_target_adjustment_buy_positive_sentiment(self):
         """Test AI SL/TGT adjustment for a BUY trade with positive sentiment."""
         symbol = 'RELIANCE'
@@ -456,3 +456,91 @@ if __name__ == '__main__':
         self.strategy.check_trend_flip_exit(self.mock_positions, {'INFY': pd.DataFrame({'close': [1450]})})
 
         self.mock_order_manager.close_order.assert_not_called()
+
+    def test_buy_signal_suppressed_by_negative_sentiment(self):
+        """Test that a BUY signal is suppressed if sentiment is too negative."""
+        symbol = 'INFY'
+        # Mock news_filter to return negative sentiment
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = -0.6
+        # Mock AI module to return a strong BUY signal otherwise
+        self.mock_ai_module.get_signal_score.return_value = 0.8
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+
+        # Prepare mock historical data
+        mock_historical_data = {symbol: pd.DataFrame({'close': [100.0]}, index=[datetime.now()])}
+
+        # Call check_entry_signals
+        self.strategy.check_entry_signals(datetime.now(), mock_historical_data)
+
+        # Verify that place_order was NOT called
+        self.mock_order_manager.place_order.assert_not_called()
+        log_message_found = False
+        for call in self.mock_logger.info.call_args_list:
+            if f"Skipping BUY for {symbol} due to negative sentiment (-0.60)." in call.args[0]:
+                log_message_found = True
+                break
+        self.assertTrue(log_message_found)
+
+    def test_leverage_increased_by_positive_sentiment(self):
+        """Test that leverage is increased for a BUY signal with strong positive sentiment."""
+        symbol = 'RELIANCE'
+        # Mock news_filter to return positive sentiment
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = 0.8
+        # Mock AI module to return a strong BUY signal
+        self.mock_ai_module.get_signal_score.return_value = 0.9
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+        # Mock AI module to return an increased leverage multiplier
+        self.mock_ai_module.get_ai_leverage_multiplier.return_value = 12.0 # Example: 10 * 1.2
+
+        # Prepare mock historical data
+        mock_historical_data = {symbol: pd.DataFrame({'close': [1000.0]}, index=[datetime.now()])}
+
+        # Call check_entry_signals
+        self.strategy.check_entry_signals(datetime.now(), mock_historical_data)
+
+        # Verify that place_order was called with the increased leverage
+        self.mock_order_manager.place_order.assert_called_once_with(
+            symbol, 'BUY', 10, 1000.0, leverage=12.0
+        )
+        log_message_found = False
+        for call in self.mock_logger.info.call_args_list:
+            if f"Leverage for {symbol}: 12.00x" in call.args[0]:
+                log_message_found = True
+                break
+        self.assertTrue(log_message_found)
+
+    def test_leverage_decreased_by_negative_sentiment(self):
+        """Test that leverage is decreased for a BUY signal with strong negative sentiment."""
+        symbol = 'TCS'
+        # Mock news_filter to return a neutral sentiment, allowing trade to proceed
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = 0.0
+        # Mock AI module to return a strong BUY signal
+        self.mock_ai_module.get_signal_score.return_value = 0.9
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+        # Mock AI module to return a decreased leverage multiplier (simulating negative sentiment effect) # This comment is incorrect, it should be 5.0
+        self.mock_ai_module.get_ai_leverage_multiplier.return_value = 5.0 # Example: 10 * 0.5
+
+        # Prepare mock historical data
+        mock_historical_data = {symbol: pd.DataFrame({'close': [500.0]}, index=[datetime.now()])}
+
+        # Call check_entry_signals
+        self.strategy.check_entry_signals(datetime.now(), mock_historical_data)
+
+        # Verify that place_order was called with the decreased leverage
+        self.mock_order_manager.place_order.assert_called_once_with(
+            symbol, 'BUY', 10, 500.0, leverage=5.0
+        )
+        log_message_found = False
+        for call in self.mock_logger.info.call_args_list:
+            if f"Leverage for {symbol}: 5.00x" in call.args[0]:
+                log_message_found = True
+                break
+        self.assertTrue(log_message_found)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+if __name__ == '__main__':
+    unittest.main()

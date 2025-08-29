@@ -158,3 +158,7 @@ Position sizing uses **AI signal scores** with a **tiered leverage model** to ma
    - Display AI scores, leverage, TSL movements, trade signals.  
    - Filter by AI-only trades, trend-flip, and news sentiment.  
    - Live updates synced via Redis and Gemini AI Studio API.  
+
+4. **AI Safety Layer Enforcement**  
+   - Daily leverage cap, exposure cap, holiday/session tightening.  
+   - Profitlock behavior (tighten stops once capital target met).
