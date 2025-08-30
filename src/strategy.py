@@ -3,7 +3,7 @@
 # Description: Orchestrates all modules and makes entry/exit decisions.
 #
 # DTS Intraday AI Trading System - Strategy Orchestrator
-# Version: 2025-08-20
+# Version: 2025-08-29
 #
 # Note: Added a new master method `check_exit_conditions` to consolidate all
 # exit logic and simplify the main loop in the backtest runner.
@@ -27,6 +27,7 @@ from src.ai_module import AIModule
 from src.news_filter import NewsFilter
 from src.constants import MAX_ACTIVE_POSITIONS, TSL_PERCENT, SL_PERCENT, TARGET_PERCENT, AUTO_EXIT_TIME
 from src.config import get_config
+from src.ai_webhook import send_event_webhook
 
 # Set up logging for the module
 logger = logging.getLogger(__name__)
@@ -60,15 +61,81 @@ class Strategy:
         # ✅ FIX: Added the `min_profit_mode` attribute to the Strategy class
         self.min_profit_mode = self.config.get("MIN_PROFIT_MODE", False)
 
+        # AI Safety Layer
+        self.profit_lock_threshold = self.config.get("PROFIT_LOCK_THRESHOLD", 5.0)
+        self.profit_lock_tsl_percent = self.config.get("PROFIT_LOCK_TSL_PERCENT", 1.0)
+        self.holiday_leverage_multiplier = self.config.get("HOLIDAY_SESSION_LEVERAGE_MULTIPLIER", 0.5)
+        # Safety caps (fallbacks keep behavior stable if constants not defined)
+        self._max_leverage_cap = self.config.get("DAILY_LEVERAGE_CAP", 5.0)
+        self.crash_guard_threshold = self.config.get("CRASH_GUARD_THRESHOLD", 3.0) # Default to 3% market drop
+        self.is_crash_active = False # Flag to indicate if crash guard is active
+
     def run_for_minute(self, timestamp: datetime, historical_data: dict):
         """
         Main loop for a single minute of the trading day.
         """
         # Step 1: Check for exit signals on existing positions
         self.check_exit_conditions(timestamp, historical_data)
+
+        # Step 1.5: Check for profit lock
+        self.check_profit_lock(historical_data)
         
+        # Step 1.75: Check for market crash and activate crash guard
+        self.check_crash_guard(historical_data)
+
         # Step 2: Check for new entry signals
         self.check_entry_signals(timestamp, historical_data)
+
+    def check_crash_guard(self, historical_data: dict):
+        """
+        Checks for a market-wide crash and activates crash guard if detected.
+        """
+        # Placeholder for fetching NIFTY 50 data.
+        # In a real scenario, this would fetch live NIFTY data or use a pre-loaded NIFTY data stream.
+        # For now, we'll assume 'NIFTY50' is a key in historical_data for demonstration.
+        nifty_data = historical_data.get('NIFTY50')
+
+        if nifty_data is None or nifty_data.empty:
+            logger.debug("NIFTY50 data not available for crash guard check.")
+            self.is_crash_active = False
+            return
+
+        # Assuming 'open' and 'close' prices are available in NIFTY data
+        # Calculate percentage drop from open
+        nifty_open = nifty_data['open'].iloc[0]
+        nifty_current = nifty_data['close'].iloc[-1]
+
+        if nifty_open == 0: # Avoid division by zero
+            self.is_crash_active = False
+            return
+
+        percentage_drop = ((nifty_open - nifty_current) / nifty_open) * 100
+
+        if percentage_drop >= self.crash_guard_threshold:
+            self.is_crash_active = True
+            logger.warning(f"CRASH GUARD ACTIVATED: NIFTY50 dropped by {percentage_drop:.2f}% (Threshold: {self.crash_guard_threshold}%)")
+            send_event_webhook('safety_alert', {'reason': 'market_crash', 'drop_percent': percentage_drop})
+        else:
+            self.is_crash_active = False
+            logger.debug(f"Crash guard not active. NIFTY50 drop: {percentage_drop:.2f}%")
+
+    def check_profit_lock(self, historical_data: dict):
+        """
+        Checks if any open position has reached the profit lock threshold and updates the TSL.
+        """
+        open_positions = self.order_manager.get_open_positions()
+        for symbol, trade in list(open_positions.items()):
+            if symbol not in historical_data or historical_data[symbol].empty:
+                continue
+
+            current_price = historical_data[symbol]['close'].iloc[-1]
+            pnl_percent = (current_price - trade['entry_price']) / trade['entry_price'] * 100
+
+            if pnl_percent >= self.profit_lock_threshold:
+                new_tsl = current_price * (1 - self.profit_lock_tsl_percent / 100)
+                if new_tsl > trade.get('trailing_sl', 0):
+                    self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
+                    logger.info(f"Profit lock triggered for {symbol}. TSL updated to {new_tsl}.")
 
     def check_exit_conditions(self, timestamp: datetime, historical_data: dict):
         """
@@ -105,111 +172,63 @@ class Strategy:
             sentiment_score = self.ai_module.get_sentiment_score(symbol)
 
             # Adjust SL/TGT based on sentiment
-            sl_price, tgt_price = self.ai_module.adjust_sl_target_sentiment_aware(
+            result = self.ai_module.adjust_sl_target_sentiment_aware(
                 base_sl_price, base_tgt_price, trade['direction'], sentiment_score
             )
+            if not result or len(result) != 2:
+                sl_price, tgt_price = None, None
+            else:
+                sl_price, tgt_price = result
 
             if trade['direction'] == 'BUY':
                 if current_price <= sl_price:
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"Position for {symbol} closed due to Hard SL (AI-adjusted) at {current_price}.")
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'stop_loss', 'symbol': symbol, 'price': current_price})
                 elif current_price >= tgt_price:
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"Position for {symbol} closed due to Hard TGT (AI-adjusted) at {current_price}.")
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'target_profit', 'symbol': symbol, 'price': current_price})
             elif trade['direction'] == 'SELL':
                 if current_price >= sl_price: # For SELL, SL is above entry
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"Position for {symbol} closed due to Hard SL (AI-adjusted) at {current_price}.")
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'stop_loss', 'symbol': symbol, 'price': current_price})
                 elif current_price <= tgt_price: # For SELL, TGT is below entry
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"Position for {symbol} closed due to Hard TGT (AI-adjusted) at {current_price}.")
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'target_profit', 'symbol': symbol, 'price': current_price})
 
     def check_ai_tsl_exit(self, open_positions, historical_data):
         """
         Applies volatility-aware AI-driven trailing stop-loss with leverage adjustments.
         """
-        # ✅ FIX: Wrap the loop with `list()` to prevent `RuntimeError`.
         for symbol, trade in list(open_positions.items()):
             if symbol not in historical_data or historical_data[symbol].empty:
                 continue
 
             current_price = historical_data[symbol]['close'].iloc[-1]
-            data = historical_data[symbol]
-            
-            # Calculate volatility (standard deviation of recent price changes)
-            if len(data) >= 10:
-                price_changes = data['close'].pct_change().dropna()
-                volatility = price_changes.std() * 100  # Convert to percentage
-            else:
-                volatility = 2.0  # Default volatility if insufficient data
-            
-            # Calculate current PnL percentage
+            tsl_details = self.ai_module.get_tsl_movement(symbol, trade, historical_data[symbol])
+
             if trade['direction'] == 'BUY':
-                current_pnl = (current_price - trade['entry_price']) / trade['entry_price'] * 100
-                pnl_adjustment = max(0.5, min(2.0, current_pnl * 0.1))  # PnL-based adjustment
-            else:  # SELL
-                current_pnl = (trade['entry_price'] - current_price) / trade['entry_price'] * 100
-                pnl_adjustment = max(0.5, min(2.0, current_pnl * 0.1))
-            
-            # Get base TSL percentage from AI module
-            base_tsl = self.ai_module.get_ai_tsl_percentage(symbol, current_pnl)
-            
-            # Volatility-aware TSL adjustments
-            if volatility > 3.0:  # High volatility - tighter TSL
-                volatility_multiplier = 0.7
-                logger.info(f"High volatility ({volatility:.2f}%) detected for {symbol}, tightening TSL")
-            elif volatility < 1.0:  # Low volatility - looser TSL
-                volatility_multiplier = 1.3
-                logger.info(f"Low volatility ({volatility:.2f}%) detected for {symbol}, loosening TSL")
-            else:  # Normal volatility
-                volatility_multiplier = 1.0
-            
-            # Leverage-aware adjustments
-            leverage = trade.get('leverage', 1.0)
-            if leverage > 5.0:  # High leverage - much tighter TSL
-                leverage_multiplier = 0.5
-                logger.info(f"High leverage ({leverage}x) detected for {symbol}, aggressive TSL tightening")
-            elif leverage > 2.0:  # Medium leverage - tighter TSL
-                leverage_multiplier = 0.8
-                logger.info(f"Medium leverage ({leverage}x) detected for {symbol}, moderate TSL tightening")
-            else:  # Low leverage - normal TSL
-                leverage_multiplier = 1.0
-            
-            # Calculate final TSL percentage
-            final_tsl_percent = base_tsl * volatility_multiplier * leverage_multiplier
-            
-            # Ensure TSL is within reasonable bounds
-            final_tsl_percent = max(0.2, min(5.0, final_tsl_percent))  # Between 0.2% and 5%
-            
-            # Calculate new TSL price
-            if trade['direction'] == 'BUY':
-                new_tsl = current_price * (1 - final_tsl_percent / 100)
-                current_tsl = trade.get('trailing_sl', 0)
+                if tsl_details["new_tsl"] > tsl_details["old_tsl"] or tsl_details["old_tsl"] == 0:
+                    self.order_manager.update_position(symbol, {'trailing_sl': tsl_details["new_tsl"]})
+                    logger.info(f"AI-TSL updated for {symbol}: {tsl_details['tsl_percent']:.2f}% (vol:{tsl_details['volatility']:.2f}, lev:{tsl_details['leverage']}, pnl:{tsl_details['pnl_percent']:.2f}%)")
                 
-                # Only update if new TSL is higher (better protection) or if no TSL exists
-                if new_tsl > current_tsl or current_tsl == 0:
-                    self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
-                    logger.info(f"AI-TSL updated for {symbol}: {final_tsl_percent:.2f}% (vol:{volatility:.2f}, lev:{leverage}, pnl:{current_pnl:.2f}%)")
-                
-                # Check if TSL has been hit
                 if current_price <= trade.get('trailing_sl', 0):
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"AI-TSL hit for {symbol}. Position closed at {current_price}.")
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'ai_tsl', 'symbol': symbol, 'price': current_price})
                     
             else:  # SELL direction
-                new_tsl = current_price * (1 + final_tsl_percent / 100)
-                current_tsl = trade.get('trailing_sl', float('inf'))
+                if tsl_details["new_tsl"] < tsl_details["old_tsl"] or tsl_details["old_tsl"] == float('inf'):
+                    self.order_manager.update_position(symbol, {'trailing_sl': tsl_details["new_tsl"]})
+                    logger.info(f"AI-TSL updated for {symbol} (SHORT): {tsl_details['tsl_percent']:.2f}% (vol:{tsl_details['volatility']:.2f}, lev:{tsl_details['leverage']}, pnl:{tsl_details['pnl_percent']:.2f}%)")
                 
-                # Only update if new TSL is lower (better protection for shorts) or if no TSL exists
-                if new_tsl < current_tsl or current_tsl == float('inf'):
-                    self.order_manager.update_position(symbol, {'trailing_sl': new_tsl})
-                    logger.info(f"AI-TSL updated for {symbol} (SHORT): {final_tsl_percent:.2f}% (vol:{volatility:.2f}, lev:{leverage}, pnl:{current_pnl:.2f}%)")
-                
-                # Check if TSL has been hit for shorts
                 if current_price >= trade.get('trailing_sl', float('inf')):
                     self.order_manager.close_order(symbol, current_price)
                     logger.info(f"AI-TSL hit for {symbol} (SHORT). Position closed at {current_price}.")
-
+                    send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'ai_tsl', 'symbol': symbol, 'price': current_price})
 
     def check_trend_flip_exit(self, open_positions, historical_data):
         """
@@ -240,6 +259,7 @@ class Strategy:
             if exit_condition:
                 self.order_manager.close_order(symbol, data['close'].iloc[-1])
                 logger.info(f"Position for {symbol} closed due to AI-confirmed trend flip.")
+                send_event_webhook('trade_signal', {'signal_type': 'exit', 'reason': 'trend_flip', 'symbol': symbol, 'price': data['close'].iloc[-1]})
 
     def check_entry_signals(self, timestamp: datetime, historical_data: dict):
         """
@@ -249,44 +269,68 @@ class Strategy:
             logger.info("Max active positions reached. Skipping entry signal check.")
             return
 
+        # Adjust leverage for holidays or special sessions
+        leverage_multiplier_adj = 1.0
+        if self.data_fetcher.is_holiday_or_special_session():
+            leverage_multiplier_adj = self.holiday_leverage_multiplier
+            logger.info(f"Holiday/special session detected. Applying leverage multiplier of {leverage_multiplier_adj}.")
+
+        # Further adjust leverage if crash guard is active
+        if self.is_crash_active:
+            leverage_multiplier_adj *= 0.1 # Significantly reduce leverage during a crash
+            logger.warning(f"Crash guard active. Further reducing leverage to {leverage_multiplier_adj}.")
+
         for symbol, data in historical_data.items():
             if data.empty:
                 continue
 
             # 1. Get News Sentiment
             sentiment_score = self.news_filter.get_and_analyze_sentiment(symbol)
-            logger.info(f"Sentiment for {symbol}: {sentiment_score:.2f}")
+            try:
+                score_val = float(sentiment_score)
+            except (TypeError, ValueError):
+                score_val = 0.0
+            logger.info(f"Sentiment for {symbol}: {score_val:.2f}")
 
             # Skip BUY if sentiment is too negative
             if sentiment_score < -0.5: # Threshold for negative sentiment
                 logger.info(f"Skipping BUY for {symbol} due to negative sentiment ({sentiment_score:.2f}).")
-                # Consider favoring SELL if the strategy supports it and conditions are met
-                # For now, just skip BUY
                 continue
 
-            # 2. Get AI Signal Score (pass sentiment to AI module)
-            signal_score = self.ai_module.get_signal_score(symbol, data, sentiment_score)
+            # 2. Get AI Metrics
+            ai_metrics = self.ai_module.get_ai_metrics(symbol, data, sentiment_score)
+            signal_score = ai_metrics["ai_score"]
+            # NOTE (before): leverage was forced to 1.0 or halved under some sentiment paths
+            # Determine AI leverage:
+            leverage = self._resolve_ai_leverage(signal_score, sentiment_score)
+            
+            # Apply holiday/special session adjustment
+            leverage *= leverage_multiplier_adj
+
             logger.info(f"Signal score for {symbol}: {signal_score:.2f}")
+            logger.info(f"Leverage for {symbol}: {leverage:.2f}x")
 
             # 3. Determine Trade Direction (AI-driven)
-            trade_direction = self.ai_module.get_trade_direction(symbol) # This method needs to be updated to use sentiment
+            trade_direction = self.ai_module.get_trade_direction(symbol)
 
             if trade_direction and signal_score > 0.7: # Example threshold for entry
-                # 4. Get AI Leverage Multiplier (pass sentiment to AI module)
-                leverage_multiplier = self.ai_module.get_ai_leverage_multiplier(symbol, signal_score, sentiment_score)
-                logger.info(f"Leverage for {symbol}: {leverage_multiplier:.2f}x")
-
-                # 5. Calculate position size
+                # 4. Calculate position size
                 entry_price = data['close'].iloc[-1]
-                # Assuming a method to calculate quantity based on capital and leverage
-                # This needs to be implemented or called from order_manager
-                # For now, a placeholder quantity
                 quantity = 10 # Placeholder
 
-                # 6. Place Order
-                success = self.order_manager.place_order(symbol, trade_direction, quantity, entry_price, leverage=leverage_multiplier)
+                # 5. Place Order
+                success = self.order_manager.place_order(symbol, trade_direction, quantity, entry_price, leverage=leverage, ai_metrics=ai_metrics)
                 if success:
-                    logger.info(f"Placed {trade_direction} order for {symbol} at {entry_price} with {leverage_multiplier}x leverage.")
+                    logger.info(f"Placed {trade_direction} order for {symbol} at {entry_price} with {leverage}x leverage.")
+                    send_event_webhook('trade_signal', {
+                        'signal_type': 'entry',
+                        'symbol': symbol,
+                        'direction': trade_direction,
+                        'price': entry_price,
+                        'quantity': quantity,
+                        'leverage': leverage,
+                        'signal_score': signal_score
+                    })
                 else:
                     logger.warning(f"Failed to place {trade_direction} order for {symbol}.")
 
@@ -303,7 +347,69 @@ class Strategy:
         try:
             eod_time = datetime.strptime(self.auto_exit_time, "%H:%M").time()
             if current_time >= eod_time:
-                self.close_all_positions_eod()
+                open_positions = self.order_manager.get_open_positions()
+                if open_positions:
+                    self.close_all_positions_eod()
+                    send_event_webhook('safe_timeout', {'reason': 'end_of_day_exit', 'time': str(current_time)})
         except ValueError:
             logger.error(f"Invalid AUTO_EXIT_TIME format in config: {self.auto_exit_time}")
-            
+
+    def _resolve_ai_leverage(self, ai_score: float, sentiment_score: float) -> float:
+        """
+        Honor AI-provided leverage directly if available; otherwise use spec curve.
+        Clamp to max leverage cap. Keep logic minimal & transparent.
+        """
+        # Try AI module first
+        ai_leverage = None
+        try:
+            # Prefer keyword args to be robust against ai_module signatures
+            ai_leverage = self.ai_module.get_leverage(
+                signal_score=ai_score, sentiment_score=sentiment_score
+            )
+        except AttributeError:
+            # ai_module has no get_leverage – use default curve
+            pass
+        except TypeError:
+            # ai_module.get_leverage exists but signature differs; try positional
+            try:
+                ai_leverage = self.ai_module.get_leverage(ai_score, sentiment_score)
+            except Exception:
+                ai_leverage = None
+        except Exception:
+            ai_leverage = None
+
+        if ai_leverage is None:
+            ai_leverage = self._default_leverage_curve(ai_score)
+
+        # Clamp safety
+        if ai_leverage is None:
+            ai_leverage = 1.0
+        try:
+            ai_leverage = float(ai_leverage)
+        except Exception:
+            ai_leverage = 1.0
+
+        if ai_leverage < 1.0:
+            ai_leverage = 1.0
+        if ai_leverage > self._max_leverage_cap:
+            ai_leverage = self._max_leverage_cap
+
+        return ai_leverage
+
+    @staticmethod
+    def _default_leverage_curve(ai_score: float) -> float:
+        """
+        Spec-defined curve:
+          ≥ 0.80 -> 5.0x
+          0.50–0.79 -> 3.5x
+          < 0.50 -> 1.0x
+        """
+        try:
+            s = float(ai_score)
+        except Exception:
+            return 1.0
+        if s >= 0.80:
+            return 5.0
+        if s >= 0.50:
+            return 3.5
+        return 1.0
