@@ -1,0 +1,25 @@
+
+{
+  "tradingHolidays": [
+    {
+      "tradingDate": "26-Jan-2025",
+      "weekDay": "Sunday",
+      "description": "Republic Day"
+    },
+    {
+      "tradingDate": "15-Aug-2025",
+      "weekDay": "Friday",
+      "description": "Independence Day"
+    },
+    {
+      "tradingDate": "02-Oct-2025",
+      "weekDay": "Thursday",
+      "description": "Mahatma Gandhi Jayanti"
+    },
+    {
+      "tradingDate": "25-Dec-2025",
+      "weekDay": "Thursday",
+      "description": "Christmas"
+    }
+  ]
+}

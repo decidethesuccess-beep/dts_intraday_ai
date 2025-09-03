@@ -1,14 +1,17 @@
 src/ai_module.py
 src/ai_webhook.py
+src/analytics_manager.py
 src/backtest_dashboard.py
 src/backtest_runner.py
 src/constants.py
 src/data_fetcher.py
+src/holiday_manager.py
 src/intraday_dashboard_GPT.py
 src/live_stream.py
 src/order_manager.py
 src/paper_trade_system.py
 src/strategy.py
+src/trade_logger.py
 src/utils.py
 src/angel_order.py
 src/config.py
@@ -16,8 +19,10 @@ src/news_filter.py
 src/redis_store.py
 tests/test_backtest.py
 tests/test_live_stream.py
+tests/test_holiday_manager.py
 tests/test_strategy.py
 tests/test_strategy_ai.py
+tests/test_trade_logger.py
 tests/test_utils.py
 tests/test_integration.py
 
@@ -38,24 +43,29 @@ pytest command template for all your existing tests, so you can run them in one 
 FYR - Current Module List (Final for DTS Intraday AI Strategy)
 ai_module.py – AI scoring, AI-driven optimization, TSL adjustments, trend-flip exit calculations, min-profit mode.
 ai_webhook.py – Sends/receives daily/weekly/monthly/yearly AI guidance via Gemini AI Studio.
+analytics_manager.py - For PnL and analytics
 backtest_dashboard.py – Streamlit/visualization dashboard for backtest results.
 backtest_runner.py – Historical 1-min candle backtesting engine, top gainers filtering, trade simulation.
 constants.py – Thresholds, TSL/SL/TGT, AI params, capital allocation constants.
 data_fetcher.py – Angel One API: 1-min OHLCV, LTP retrieval, NSE EQ static JSON loader, holiday calendar awareness.
+holiday_manager.py - Integrated NSE holiday calendar with API + JSON fallback
 intraday_dashboard_GPT.py – Streamlit dashboard for live trading; AI comments, signals, PnL visualization from Redis.
 live_stream.py – Real-time LTP/market feed ingestion from Angel One into Redis.
 order_manager.py – Sends orders via Angel One API, integrates with paper/live trading, applies capital rotation, SL/TGT/TSL.
 paper_trade_system.py – Paper trading simulation: AI TSL, trend flip exits, capital rotation, both BUY/SELL trades.
 strategy.py – Main intraday strategy logic: AI scoring, trend detection, trade entry/exit rules, hard SL/TGT, news filter integration.
+trade_logger.py - Trade logs, PnL curves.
 utils.py – Helper functions: datetime, percentage calculations, symbol filtering, logging helpers.
 angel_order.py – Replacement for deprecated dhan_order.py, communicates with Angel One API for live orders.
 config.py – Environment configuration, API keys/secrets, trading session settings.
 news_filter.py – News sentiment analysis with thresholds, filters negative news for BUY trades.
 redis_store.py – Redis central memory hub: AI comments, trade logs, live signals, dashboard updates.
 test_backtest.py – Unit/integration tests for backtesting logic.
+test_holiday_manager.py - Move all holiday-related tests from tests/test_utils.py to a new file
 test_live_stream.py – Unit/integration tests for live data ingestion & streaming.
 test_strategy.py – Unit/integration tests for strategy logic: trade signals, AI scoring, TSL, SL/TGT.
 test_strategy_ai.py - Start simple (basic fixtures, test AI scoring and TSL adjustments) and expand gradually.
+test_trade_logger.py - Trade logs, PnL curves.
 test_utils.py – Unit tests for utilities/helpers.
 test_integration.py - An integration test ensures that capital allocation, trade entry/exit, TSL, trend-flip, and PnL all work together with no broken assumptions.
 

@@ -3,7 +3,7 @@
 # Description: Handles AI scoring, trend detection, AI-TSL, and AI Leverage.
 #
 # DTS Intraday AI Trading System - AI Module
-# Version: 2025-08-15
+# Version: 2025-08-29
 #
 # Note: The AIModule.__init__ has been updated to accept a redis_store instance
 # to align with the overall system architecture for storing AI signals and data.
@@ -12,9 +12,11 @@
 import logging
 import pandas as pd
 import datetime
+import json
 
 # Import RedisStore for proper type hinting
 from src.redis_store import RedisStore
+from src.constants import NSE_CIRCUIT_LIMITS, CIRCUIT_BREAKER_THRESHOLD
 
 class AIModule:
     """
@@ -32,8 +34,33 @@ class AIModule:
         logging.info("AIModule initialized.")
         self.redis_store = redis_store
         self.trend_data = {}
+        self.last_retrained_timestamp = None
+        # Mock model parameter
+        self.model_version = 1.0
 
-    def get_signal_score(self, symbol, data, sentiment_score: float):
+    def retrain(self, training_data: pd.DataFrame):
+        """
+        Retrains the AI model on a new window of data.
+        In this mock implementation, it just logs the event and updates a version number.
+        """
+        if training_data.empty:
+            logging.warning("Retraining skipped: training data is empty.")
+            return
+
+        logging.info(f"Starting AI model retraining with {len(training_data)} data points.")
+        # In a real implementation, you would use a library like scikit-learn
+        # to retrain your model here.
+        # For example: self.model.fit(X_train, y_train)
+
+        # Mock the model update by incrementing a version number
+        self.model_version += 0.1
+        self.last_retrained_timestamp = datetime.datetime.now()
+
+        logging.info(f"AI model successfully retrained. New model version: {self.model_version:.1f}")
+        self.redis_store.set("ai_model_version", self.model_version)
+        self.redis_store.set("ai_last_retrained_timestamp", self.last_retrained_timestamp.isoformat())
+
+    def get_signal_score(self, symbol, data, sentiment_score: float = 0.0):
         """
         Scores a potential trade signal based on momentum, volume, and news sentiment.
         
@@ -66,6 +93,13 @@ class AIModule:
             elif sentiment_score < -0.5:
                 score -= 0.2 # Larger penalty for strong negative news
             
+            # Incorporate circuit potential score
+            circuit_potential = self._calculate_circuit_potential_score(data)
+            score += circuit_potential * 0.2 # Give a boost for high circuit potential
+
+            # Add model version to score to simulate model improvement
+            score *= self.model_version
+
             score = max(0.0, min(1.0, score)) # Ensure score stays within 0-1 range
 
             # This is where you would save the score to Redis
@@ -76,6 +110,34 @@ class AIModule:
         # This will be stored in Redis as per the spec in live trading
         self.redis_store.set(f"ai_score:{symbol}", 0.0)
         return 0.0
+
+    def _calculate_circuit_potential_score(self, data: pd.DataFrame) -> float:
+        """
+        Calculates a score indicating the potential for a stock to hit a circuit limit.
+        A higher score means closer to a circuit.
+        """
+        if data.empty or len(data) < 2:
+            return 0.0
+
+        # Assuming 'open' is the reference for the day's start or previous close
+        # For simplicity, using the first close in the provided data as a reference
+        # In a real scenario, this would be the previous day's closing price.
+        reference_price = data['close'].iloc[0]
+        current_price = data['close'].iloc[-1]
+
+        if reference_price == 0:
+            return 0.0
+
+        price_change_pct = abs((current_price - reference_price) / reference_price)
+
+        circuit_potential_score = 0.0
+        for limit in sorted(NSE_CIRCUIT_LIMITS):
+            if price_change_pct >= limit - CIRCUIT_BREAKER_THRESHOLD:
+                # The closer to the limit, the higher the score
+                score_contribution = (price_change_pct - (limit - CIRCUIT_BREAKER_THRESHOLD)) / CIRCUIT_BREAKER_THRESHOLD
+                circuit_potential_score = max(circuit_potential_score, score_contribution)
+        
+        return min(1.0, circuit_potential_score) # Cap score at 1.0
 
     def get_trade_direction(self, symbol):
         """
@@ -150,6 +212,84 @@ class AIModule:
             leverage *= 0.5 # Reduce leverage for very negative news
         
         return leverage
+
+    def get_ai_metrics(self, symbol: str, data: pd.DataFrame, sentiment_score: float) -> dict:
+        """
+        Calculates and returns a dictionary of AI metrics for a given symbol.
+        """
+        signal_score = self.get_signal_score(symbol, data, sentiment_score)
+        leverage = self.get_ai_leverage_multiplier(symbol, signal_score, sentiment_score)
+        trend_direction = self.get_trend_direction(data)
+        trend_flip_confirmation = self.confirm_trend_reversal(symbol, data)
+        circuit_potential = self._calculate_circuit_potential_score(data)
+
+        metrics = {
+            "ai_score": signal_score,
+            "leverage": leverage,
+            "trend_direction": trend_direction,
+            "trend_flip_confirmation": trend_flip_confirmation,
+            "sentiment_score": sentiment_score,
+            "circuit_potential": circuit_potential,
+            "model_version": self.model_version
+        }
+        self.redis_store.set(f"ai_metrics:{symbol}", json.dumps(metrics))
+        return metrics
+
+    def get_tsl_movement(self, symbol: str, trade: dict, historical_data: pd.DataFrame) -> dict:
+        """
+        Calculates and returns TSL movement details.
+        """
+        current_price = historical_data['close'].iloc[-1]
+        data = historical_data
+        
+        if len(data) >= 10:
+            price_changes = data['close'].pct_change().dropna()
+            volatility = price_changes.std() * 100
+        else:
+            volatility = 2.0
+        
+        if trade['direction'] == 'BUY':
+            current_pnl = (current_price - trade['entry_price']) / trade['entry_price'] * 100
+        else:
+            current_pnl = (trade['entry_price'] - current_price) / trade['entry_price'] * 100
+        
+        base_tsl = self.get_ai_tsl_percentage(symbol, current_pnl)
+        
+        if volatility > 3.0:
+            volatility_multiplier = 0.7
+        elif volatility < 1.0:
+            volatility_multiplier = 1.3
+        else:
+            volatility_multiplier = 1.0
+        
+        leverage = trade.get('leverage', 1.0)
+        if leverage > 5.0:
+            leverage_multiplier = 0.5
+        elif leverage > 2.0:
+            leverage_multiplier = 0.8
+        else:
+            leverage_multiplier = 1.0
+        
+        final_tsl_percent = base_tsl * volatility_multiplier * leverage_multiplier
+        final_tsl_percent = max(0.2, min(5.0, final_tsl_percent))
+        
+        if trade['direction'] == 'BUY':
+            new_tsl = current_price * (1 - final_tsl_percent / 100)
+            current_tsl = trade.get('trailing_sl', 0)
+        else:
+            new_tsl = current_price * (1 + final_tsl_percent / 100)
+            current_tsl = trade.get('trailing_sl', float('inf'))
+
+        tsl_details = {
+            "new_tsl": new_tsl,
+            "old_tsl": current_tsl,
+            "tsl_percent": final_tsl_percent,
+            "volatility": volatility,
+            "pnl_percent": current_pnl,
+            "leverage": leverage,
+        }
+        self.redis_store.set(f"tsl_movement:{symbol}", json.dumps(tsl_details))
+        return tsl_details
 
     def adjust_trailing_sl_ai(self, trade, market_data, ai_score):
         """

@@ -9,6 +9,7 @@
 import logging
 import pandas as pd
 import datetime
+from src import holiday_manager
 
 class DataFetcher:
     """
@@ -24,6 +25,8 @@ class DataFetcher:
         """
         self.api_client = api_client
         logging.info("DataFetcher initialized.")
+        # Load holidays at startup
+        holiday_manager.load_holidays()
 
     def get_tradable_symbols(self):
         """
@@ -86,4 +89,13 @@ class DataFetcher:
         """
         # This is a mock implementation for backtesting.
         return 1000.0
+
+    def is_holiday_or_special_session(self):
+        """
+        Checks if the current day is a holiday or a special trading session.
+        
+        Returns:
+            bool: True if it is a holiday or special session, False otherwise.
+        """
+        return holiday_manager.is_trading_holiday(datetime.date.today())
 

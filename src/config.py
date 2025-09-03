@@ -36,6 +36,7 @@ config = {
     # AI integration
     "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", "your_gemini_api_key"),
     "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "your_openai_api_key"),
+    "WEBHOOK_URL": os.getenv("WEBHOOK_URL"),
     
     # Redis configuration
     "REDIS_HOST": os.getenv("REDIS_HOST", "localhost"),
@@ -46,6 +47,19 @@ config = {
     # System & market timings
     "MARKET_OPEN_TIME": os.getenv("MARKET_OPEN_TIME", "09:15"),
     "MARKET_CLOSE_TIME": os.getenv("MARKET_CLOSE_TIME", "15:30"),
+
+    # AI Safety Layer
+    "DAILY_LEVERAGE_CAP": float(os.getenv("DAILY_LEVERAGE_CAP", 20.0)),
+    "DAILY_EXPOSURE_CAP": float(os.getenv("DAILY_EXPOSURE_CAP", 500000.0)),
+    "PROFIT_LOCK_THRESHOLD": float(os.getenv("PROFIT_LOCK_THRESHOLD", 5.0)),
+    "PROFIT_LOCK_TSL_PERCENT": float(os.getenv("PROFIT_LOCK_TSL_PERCENT", 1.0)),
+    "HOLIDAY_SESSION_LEVERAGE_MULTIPLIER": float(os.getenv("HOLIDAY_SESSION_LEVERAGE_MULTIPLIER", 0.5)),
+    "MIN_PROFIT_THRESHOLD": float(os.getenv("MIN_PROFIT_THRESHOLD", 0.5)),
+    "MIN_PROFIT_PERCENTAGE_EXIT": float(os.getenv("MIN_PROFIT_PERCENTAGE_EXIT", 0.2)),
+
+    # AI Continuous Learning
+    "AI_RETRAINING_WINDOW_SIZE": int(os.getenv("AI_RETRAINING_WINDOW_SIZE", 1000)),
+    "AI_RETRAINING_INTERVAL_MINUTES": int(os.getenv("AI_RETRAINING_INTERVAL_MINUTES", 60)),
 }
 
 def get_config(key: str = None, default=None):
