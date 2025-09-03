@@ -69,5 +69,15 @@ AUTO_EXIT_TIME = '15:20' # ✅ FIX: Added missing constant for end-of-day exit.
 
 DEBUG = True
 MIN_PROFIT_MODE = False
+MIN_PROFIT_THRESHOLD = 0.5 # Percentage profit to trigger min profit mode
+MIN_PROFIT_PERCENTAGE_EXIT = 0.2 # Percentage profit to lock in when min profit mode is active
 AI_OPTIMIZATION_ENABLED = False
 AI_LEVERAGE_ENABLED = False
+
+# ===============================
+# ⚡ Circuit Limits
+# ===============================
+# Constants related to stock circuit breakers and early detection.
+
+NSE_CIRCUIT_LIMITS = [0.02, 0.05, 0.10, 0.20] # Common NSE circuit percentages (2%, 5%, 10%, 20%)
+CIRCUIT_BREAKER_THRESHOLD = 0.05 # Threshold for early detection (e.g., 5% away from circuit)

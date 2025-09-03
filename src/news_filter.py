@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import finnhub
 
 from src.redis_store import RedisStore
+from src.ai_webhook import send_event_webhook
 
 log = logging.getLogger(__name__)
 
@@ -38,12 +39,20 @@ class NewsFilter:
             self.finnhub_client = None
         else:
             self.finnhub_client = finnhub.Client(api_key=self.finnhub_api_key)
+        self.sentiment_cache = {}
+        self.cache_expiry = timedelta(minutes=30)
 
     def get_and_analyze_sentiment(self, symbol: str):
         """
         Fetches news headlines for a symbol and performs sentiment analysis.
-        Stores the resulting sentiment score in Redis.
+        Stores the resulting sentiment score in Redis and uses a local cache.
         """
+        # Check cache first
+        cached_sentiment = self.sentiment_cache.get(symbol)
+        if cached_sentiment and (datetime.now() - cached_sentiment['timestamp']) < self.cache_expiry:
+            log.info(f"Using cached sentiment for {symbol}: {cached_sentiment['score']:.2f}")
+            return cached_sentiment['score']
+
         log.info(f"Fetching news for {symbol}...")
         headlines = self._fetch_news_headlines(symbol)
         if not headlines:
@@ -52,9 +61,17 @@ class NewsFilter:
         else:
             log.info(f"Analyzing sentiment for {len(headlines)} headlines...")
             sentiment_score = self._run_nlp_model(headlines)
-            
+            if abs(sentiment_score) > 0.7:
+                send_event_webhook('news_alert', {
+                    'symbol': symbol,
+                    'sentiment_score': sentiment_score,
+                    'headlines': headlines
+                })
+        
+        # Update Redis and local cache
         self.redis_store.r.set(f"news_sentiment:{symbol}", sentiment_score)
-        log.info(f"Sentiment score for {symbol} is {sentiment_score:.2f}, stored in Redis.")
+        self.sentiment_cache[symbol] = {'score': sentiment_score, 'timestamp': datetime.now()}
+        log.info(f"Sentiment score for {symbol} is {sentiment_score:.2f}, stored in Redis and cache.")
         return sentiment_score
 
     def _fetch_news_headlines(self, symbol: str) -> List[str]:

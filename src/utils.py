@@ -1,6 +1,9 @@
 import logging
 from datetime import datetime, time
 
+# Import holiday functions from the new module
+from .holiday_manager import is_trading_holiday
+
 def setup_logging():
     """
     Setup logging configuration for the application.

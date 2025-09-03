@@ -3,7 +3,7 @@
 # Description: Integration tests for DTS Intraday AI Trading System.
 #
 # DTS Intraday AI Trading System - Integration Test Module
-# Version: 2025-08-24
+# Version: 2025-08-29
 #
 # This file contains comprehensive integration tests to validate
 # cross-module functionality between backtest_runner, strategy, and dashboard.
@@ -74,6 +74,96 @@ class TestIntegration(unittest.TestCase):
         self.mock_order_manager.available_capital = INITIAL_CAPITAL
         self.mock_order_manager.open_positions = {}
         self.mock_order_manager.closed_trades = []
+
+        # Mock get_ai_metrics to return a dictionary of AI metrics
+        self.mock_ai_module.get_ai_metrics.return_value = {
+            'ai_score': 0.8,
+            'leverage': 1.0,
+            'trend_direction': 'UP',
+            'trend_flip_confirmation': False,
+            'sentiment_score': 0.1,
+            'circuit_potential': 0.0 # Default to 0.0 for most tests
+        }
+
+        # Mock get_tsl_movement to return a dictionary of TSL details
+        self.mock_ai_module.get_tsl_movement.return_value = {
+            'new_tsl': 102.47,
+            'old_tsl': 99.0,
+            'tsl_percent': 0.5,
+            'volatility': 2.0,
+            'pnl_percent': 3.0,
+            'leverage': 1.0
+        }
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
         
         # Create strategy instance
         self.strategy = Strategy(
@@ -95,12 +185,39 @@ class TestIntegration(unittest.TestCase):
             end_date=self.end_date,
             symbols=self.symbols
         )
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
         
         # Create sample historical data
         self.sample_data = self._create_sample_historical_data()
         
         # Create mock dashboard instance
         self.dashboard = MockIntradayDashboardGPT()
+
+        # Patch webhook functions
+        self.patcher_strategy_webhook = patch('src.strategy.send_event_webhook')
+        self.mock_strategy_webhook = self.patcher_strategy_webhook.start()
+
+        self.patcher_ai_webhook = patch('src.ai_webhook.send_event_webhook')
+        self.mock_ai_webhook = self.patcher_ai_webhook.start()
+
+        self.patcher_news_webhook = patch('src.news_filter.send_event_webhook')
+        self.mock_news_webhook = self.patcher_news_webhook.start()
+
+        # Mock the TradeLogger
+        self.mock_trade_logger = MagicMock()
+        self.strategy.trade_logger = self.mock_trade_logger
+        
+    def tearDown(self):
+        """Clean up after each test."""
+        self.patcher_strategy_webhook.stop()
+        self.patcher_ai_webhook.stop()
+        self.patcher_news_webhook.stop()
         
     def _create_sample_historical_data(self):
         """Create realistic sample historical data for testing."""
@@ -147,11 +264,7 @@ class TestIntegration(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         
         # Mock AI module to return high signal scores for entry
-        self.mock_ai_module.get_signal_score.return_value = 0.85
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
-        
-        # Mock AI module TSL percentage
-        self.mock_ai_module.get_ai_tsl_percentage.return_value = TSL_PERCENT
         
         # Mock the update_position method
         def mock_update_position(symbol, updates):
@@ -167,8 +280,9 @@ class TestIntegration(unittest.TestCase):
             
             entry_price = self.sample_data[symbol]['close'].iloc[0]
             quantity = 100
+            ai_metrics = {'ai_score': 0.85, 'leverage': 1.5, 'sentiment_score': 0.2}
             
-            success = self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price)
+            success = self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price, leverage=ai_metrics['leverage'], ai_metrics=ai_metrics)
             if success:
                 trades_placed += 1
                 
@@ -180,7 +294,8 @@ class TestIntegration(unittest.TestCase):
                     'quantity': quantity,
                     'entry_time': datetime.now(),
                     'status': 'OPEN',
-                    'trailing_sl': entry_price * (1 - TSL_PERCENT / 100)
+                    'trailing_sl': entry_price * (1 - TSL_PERCENT / 100),
+                    **ai_metrics
                 }
         
         # Verify trades were placed
@@ -203,6 +318,7 @@ class TestIntegration(unittest.TestCase):
         # Verify trade lifecycle
         self.assertEqual(len(self.mock_order_manager.open_positions), 1)
         self.assertEqual(len(self.mock_order_manager.closed_trades), 2)
+        self.assertIn('ai_score', self.mock_order_manager.closed_trades[0])
         
         # Verify PnL calculations
         total_pnl = sum(trade['pnl'] for trade in self.mock_order_manager.closed_trades)
@@ -221,7 +337,10 @@ class TestIntegration(unittest.TestCase):
                 'entry_time': datetime.now(),
                 'exit_time': datetime.now(),
                 'status': 'CLOSED',
-                'pnl': 10000.0
+                'pnl': 10000.0,
+                'ai_score': 0.9,
+                'leverage': 2.0,
+                'sentiment_score': 0.5
             },
             {
                 'symbol': 'TCS',
@@ -232,7 +351,10 @@ class TestIntegration(unittest.TestCase):
                 'entry_time': datetime.now(),
                 'exit_time': datetime.now(),
                 'status': 'CLOSED',
-                'pnl': 4000.0
+                'pnl': 4000.0,
+                'ai_score': 0.7,
+                'leverage': 1.0,
+                'sentiment_score': -0.3
             }
         ]
         
@@ -247,8 +369,10 @@ class TestIntegration(unittest.TestCase):
         # Verify trade details
         self.assertEqual(trade_summary[0]['symbol'], 'RELIANCE')
         self.assertEqual(trade_summary[0]['pnl'], 10000.0)
+        self.assertIn('ai_score', trade_summary[0])
         self.assertEqual(trade_summary[1]['symbol'], 'TCS')
         self.assertEqual(trade_summary[1]['pnl'], 4000.0)
+        self.assertIn('leverage', trade_summary[1])
 
     def test_concurrent_positions_and_reallocation(self):
         """Validate that the system handles 10 concurrent trades, exits, and reallocation of capital correctly."""
@@ -256,7 +380,6 @@ class TestIntegration(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         
         # Mock AI module
-        self.mock_ai_module.get_signal_score.return_value = 0.9
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Fill all available positions (use the symbols we have)
@@ -329,7 +452,8 @@ class TestIntegration(unittest.TestCase):
             'quantity': 100,
             'entry_time': datetime.now(),
             'status': 'OPEN',
-            'trailing_sl': 500.0 * (1 - TSL_PERCENT / 100)
+            'trailing_sl': 500.0 * (1 - TSL_PERCENT / 100),
+            'ai_metrics': {'test': 'value'}
         }
         
         # Mock open positions
@@ -337,6 +461,7 @@ class TestIntegration(unittest.TestCase):
         
         # Mock AI module to detect trend flip from UP to DOWN
         self.mock_ai_module.get_trend_direction.return_value = 'DOWN'
+        self.mock_ai_module.confirm_trend_reversal.return_value = True
         
         # Create historical data showing trend reversal
         timestamp = self.sample_data[symbol].index[100]
@@ -350,6 +475,12 @@ class TestIntegration(unittest.TestCase):
             symbol, 
             self.sample_data[symbol]['close'].iloc[100]
         )
+        self.mock_strategy_webhook.assert_called_once_with('trade_signal', {
+            'signal_type': 'exit',
+            'reason': 'trend_flip',
+            'symbol': symbol,
+            'price': self.sample_data[symbol]['close'].iloc[100]
+        })
         
         # Simulate the position being moved to closed trades
         closed_trade = mock_position.copy()
@@ -357,6 +488,19 @@ class TestIntegration(unittest.TestCase):
         closed_trade['exit_time'] = datetime.now()
         closed_trade['status'] = 'CLOSED'
         closed_trade['pnl'] = (closed_trade['exit_price'] - closed_trade['entry_price']) * closed_trade['quantity']
+
+        # Assert trade_logger.log_trade was called with correct parameters
+        self.mock_trade_logger.log_trade.assert_called_once()
+        args, kwargs = self.mock_trade_logger.log_trade.call_args
+        self.assertAlmostEqual(kwargs['pnl'], closed_trade['pnl'], places=2)
+        self.assertIn('trade_duration', kwargs)
+        self.assertIn('news_sentiment_score', kwargs)
+        self.assertIn('ai_safety_activation', kwargs)
+        self.assertEqual(kwargs['max_profit'], 0.0)
+        self.assertEqual(kwargs['max_drawdown'], 0.0)
+        self.assertEqual(kwargs['exit_reason'], 'trend_flip')
+        self.assertEqual(kwargs['strategy_id'], 'trend_flip')
+        self.assertEqual(kwargs['ai_audit_trail'], json.dumps(mock_position.get('ai_metrics', {})))
         
         self.mock_order_manager.closed_trades.append(closed_trade)
         
@@ -397,7 +541,6 @@ class TestIntegration(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = short_session_data
         
         # Mock AI module to allow some trades
-        self.mock_ai_module.get_signal_score.return_value = 0.8
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Place a few trades
@@ -422,11 +565,30 @@ class TestIntegration(unittest.TestCase):
         # Verify trades were placed
         self.assertEqual(self.mock_order_manager.place_order.call_count, 3)
         
+        # Set the return value for get_open_positions for the strategy to use
+        self.mock_order_manager.get_open_positions.return_value = self.mock_order_manager.open_positions
+
         # Test EOD exit logic
-        self.strategy.close_all_positions_eod()
+        self.strategy.close_all_positions_eod(short_session_data)
         
-        # Verify EOD exit was called
-        self.mock_order_manager.close_all_positions_eod.assert_called()
+        # Verify close_order was called for each open position
+        self.assertEqual(self.mock_order_manager.close_order.call_count, 3)
+        for i in range(3):
+            symbol = self.symbols[i]
+            expected_price = short_session_data[symbol]['close'].iloc[-1]
+            self.mock_order_manager.close_order.assert_any_call(symbol, expected_price)
+        
+        # Assert trade_logger.log_trade was called for each closed trade
+        self.assertEqual(self.mock_trade_logger.log_trade.call_count, 3)
+        for call_arg in self.mock_trade_logger.log_trade.call_args_list:
+            args, kwargs = call_arg
+            self.assertIn('trade_duration', kwargs)
+            self.assertIn('news_sentiment_score', kwargs)
+            self.assertIn('ai_safety_activation', kwargs)
+            self.assertEqual(kwargs['max_profit'], 0.0)
+            self.assertEqual(kwargs['max_drawdown'], 0.0)
+            self.assertEqual(kwargs['exit_reason'], 'eod')
+            self.assertEqual(kwargs['strategy_id'], 'eod')
         
         # Simulate all positions being closed
         for symbol in list(self.mock_order_manager.open_positions.keys()):
@@ -450,13 +612,248 @@ class TestIntegration(unittest.TestCase):
             self.assertEqual(trade['status'], 'CLOSED')
             self.assertIn('pnl', trade)
 
+    def test_news_filter_sends_webhook_on_strong_sentiment(self):
+        """Verifies that the NewsFilter sends a webhook for strong sentiment scores."""
+        symbol = 'RELIANCE'
+        headlines = ["Reliance announces record-breaking profits!"]
+        strong_sentiment_score = 0.9
+
+        # Configure the mock redis_store to have an 'r' attribute which is also a mock
+        self.mock_redis_store.r = MagicMock()
+
+        news_filter = NewsFilter(self.mock_redis_store)
+
+        with patch.object(news_filter, '_fetch_news_headlines', return_value=headlines):
+            with patch.object(news_filter, '_run_nlp_model', return_value=strong_sentiment_score):
+                news_filter.get_and_analyze_sentiment(symbol)
+
+        self.mock_news_webhook.assert_called_once_with('news_alert', {
+            'symbol': symbol,
+            'sentiment_score': strong_sentiment_score,
+            'headlines': headlines
+        })
+
+        # Also assert that the redis set method was called
+        self.mock_redis_store.r.set.assert_called_once_with(f"news_sentiment:{symbol}", strong_sentiment_score)
+
+    def test_ai_webhook_sends_webhook_on_commentary(self):
+        """Verifies that the AIWebhook sends a webhook after fetching commentary."""
+        commentary_text = "This is a test commentary."
+        
+        # We need a real AIWebhook instance to test its methods
+        from src.ai_webhook import AIWebhook
+        ai_webhook = AIWebhook(self.mock_redis_store)
+
+        # Mock the internal API call and the redis store
+        with patch.object(ai_webhook, '_call_gemini_api', return_value=commentary_text) as mock_api_call:
+            ai_webhook.get_and_store_daily_commentary()
+
+            # Assert that the underlying API was called
+            mock_api_call.assert_called_once()
+
+            # Assert that the result was stored in Redis
+            self.mock_redis_store.store_ai_comment.assert_called_once_with('daily', commentary_text)
+
+            # Assert that the webhook was sent
+            self.mock_ai_webhook.assert_called_once_with('ai_commentary', {
+                'period': 'daily',
+                'commentary': commentary_text
+            })
+
     def test_ai_tsl_integration_with_backtest(self):
         """Integration test to ensure adjust_trailing_sl_ai() works with backtest_runner and dashboard."""
         # Mock the data fetcher
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         
         # Mock AI module methods
-        self.mock_ai_module.get_signal_score.return_value = 0.85
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+        
+        # Create sample trades for testing AI-TSL integration
+        buy_trade = {
+            'symbol': 'RELIANCE',
+            'direction': 'BUY',
+            'entry_price': 1000.0,
+            'quantity': 100,
+            'trailing_sl': 950.0,
+            'entry_time': datetime.now(),
+            'status': 'OPEN'
+        }
+        
+        sell_trade = {
+            'symbol': 'TCS',
+            'direction': 'SELL',
+            'entry_price': 500.0,
+            'quantity': 200,
+            'trailing_sl': 550.0,
+            'entry_time': datetime.now(),
+            'status': 'OPEN'
+        }
+        
+        # Configure the mock AI module to return proper dict values
+        expected_buy_trade = buy_trade.copy()
+        expected_buy_trade['trailing_sl'] = 980.0  # Adjusted TSL for BUY
+        
+        expected_sell_trade = sell_trade.copy()
+        expected_sell_trade['trailing_sl'] = 520.0  # Adjusted TSL for SELL
+        
+        # Configure mock to return different values for different calls
+        self.mock_ai_module.adjust_trailing_sl_ai.side_effect = [
+            expected_buy_trade,
+            expected_sell_trade
+        ]
+        
+        # Simulate AI-TSL adjustments for both trades
+        try:
+            # Test BUY trade with AI-TSL adjustment
+            market_data_buy = self.sample_data['RELIANCE'].iloc[50:100]  # Mid-session data
+            ai_score_buy = 0.9  # High confidence signal
+            
+            updated_buy_trade = self.mock_ai_module.adjust_trailing_sl_ai(
+                buy_trade, 
+                market_data_buy, 
+                ai_score_buy
+            )
+            
+            # Test SELL trade with AI-TSL adjustment
+            market_data_sell = self.sample_data['TCS'].iloc[50:100]
+            ai_score_sell = {
+                'signal_score': 0.8,
+                'volatility_score': 0.4,
+                'confidence_score': 0.7
+            }
+            
+            updated_sell_trade = self.mock_ai_module.adjust_trailing_sl_ai(
+                sell_trade, 
+                market_data_sell, 
+                ai_score_sell
+            )
+            
+            # Verify both adjustments completed without exceptions
+            self.assertIsInstance(updated_buy_trade, dict)
+            self.assertIsInstance(updated_sell_trade, dict)
+            self.assertIn('trailing_sl', updated_buy_trade)
+            self.assertIn('trailing_sl', updated_sell_trade)
+            
+            # Verify trade directions are preserved
+            self.assertEqual(updated_buy_trade['direction'], 'BUY')
+            self.assertEqual(updated_sell_trade['direction'], 'SELL')
+            
+            # Update dashboard with adjusted trades
+            self.dashboard.update_trade_data([updated_buy_trade, updated_sell_trade])
+            trade_data = self.dashboard.get_trade_data()
+            
+            # Verify dashboard can handle AI-TSL adjusted trades
+            self.assertEqual(len(trade_data), 2)
+            self.assertIn('trailing_sl', trade_data[0])
+            self.assertIn('trailing_sl', trade_data[1])
+            
+        except Exception as e:
+            self.fail(f"AI-TSL integration test failed with exception: {e}")
+
+    def test_retraining_impacts_scoring(self):
+        """
+        Integration test to verify that AI retraining impacts subsequent AI scores.
+        """
+        # --- Mock setup for this specific test ---
+        self.mock_ai_module.model_version = 1.0
+        self.mock_ai_module.last_retrained_timestamp = None
+        self.mock_ai_module.get_signal_score.return_value = 0.75
+
+        def retrain_side_effect(data):
+            self.mock_ai_module.model_version = 1.1
+            self.mock_ai_module.last_retrained_timestamp = datetime.now()
+            self.mock_ai_module.get_signal_score.return_value = 0.85
+
+        self.mock_ai_module.retrain.side_effect = retrain_side_effect
+        
+        # Mock data fetcher to return sample data
+        self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = 0.2
+
+        # --- Phase 1: Get initial AI score ---
+        symbol = 'RELIANCE'
+        initial_data = self.sample_data[symbol].iloc[0:10]
+        initial_score = self.strategy.ai_module.get_signal_score(symbol, initial_data, 0.2)
+
+        # --- Phase 2: Trigger retraining ---
+        # Fill the buffer to trigger retraining
+        self.strategy.retraining_window_size = 5 # Lower for test
+        for i in range(5):
+            self.strategy.run_for_minute(datetime.now(), {symbol: self.sample_data[symbol].iloc[i:i+1]})
+
+        # --- Phase 3: Get AI score after retraining ---
+        # The AI module's model_version should now be 1.1
+        score_after_retraining = self.strategy.ai_module.get_signal_score(symbol, initial_data, 0.2)
+
+        # --- Assertions ---
+        self.assertEqual(self.mock_ai_module.retrain.call_count, 1)
+        self.assertNotEqual(initial_score, score_after_retraining)
+        self.assertGreater(score_after_retraining, initial_score)
+        self.assertEqual(self.strategy.ai_module.model_version, 1.1)
+
+if __name__ == '__main__':
+    unittest.main()
+
+    def test_news_filter_sends_webhook_on_strong_sentiment(self):
+        """
+        Verifies that the NewsFilter sends a webhook for strong sentiment scores.
+        """
+        symbol = 'RELIANCE'
+        headlines = ["Reliance announces record-breaking profits!"]
+        strong_sentiment_score = 0.9
+
+        # Configure the mock redis_store to have an 'r' attribute which is also a mock
+        self.mock_redis_store.r = MagicMock()
+
+        news_filter = NewsFilter(self.mock_redis_store)
+
+        with patch.object(news_filter, '_fetch_news_headlines', return_value=headlines):
+            with patch.object(news_filter, '_run_nlp_model', return_value=strong_sentiment_score):
+                news_filter.get_and_analyze_sentiment(symbol)
+
+        self.mock_news_webhook.assert_called_once_with('news_alert', {
+            'symbol': symbol,
+            'sentiment_score': strong_sentiment_score,
+            'headlines': headlines
+        })
+
+        # Also assert that the redis set method was called
+        self.mock_redis_store.r.set.assert_called_once_with(f"news_sentiment:{symbol}", strong_sentiment_score)
+
+    def test_ai_webhook_sends_webhook_on_commentary(self):
+        """
+        Verifies that the AIWebhook sends a webhook after fetching commentary.
+        """
+        commentary_text = "This is a test commentary."
+        
+        # We need a real AIWebhook instance to test its methods
+        from src.ai_webhook import AIWebhook
+        ai_webhook = AIWebhook(self.mock_redis_store)
+
+        # Mock the internal API call and the redis store
+        with patch.object(ai_webhook, '_call_gemini_api', return_value=commentary_text) as mock_api_call:
+            ai_webhook.get_and_store_daily_commentary()
+
+            # Assert that the underlying API was called
+            mock_api_call.assert_called_once()
+
+            # Assert that the result was stored in Redis
+            self.mock_redis_store.store_ai_comment.assert_called_once_with('daily', commentary_text)
+
+            # Assert that the webhook was sent
+            self.mock_ai_webhook.assert_called_once_with('ai_commentary', {
+                'period': 'daily',
+                'commentary': commentary_text
+            })
+
+    def test_ai_tsl_integration_with_backtest(self):
+        """
+        Integration test to ensure adjust_trailing_sl_ai() works with backtest_runner and dashboard.
+        """
+        # Mock the data fetcher
+        self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
+        
+        # Mock AI module methods
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Create sample trades for testing AI-TSL integration
@@ -544,8 +941,113 @@ class TestIntegration(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 
+    def test_profit_lock_integration(self):
+        """
+        Integration test for profit lock functionality.
+        Simulates a trade reaching profit lock and verifies TSL adjustment and exit.
+        """
+        symbol = 'RELIANCE'
+        entry_price = 100.0
+        quantity = 10
+
+        # Mock initial trade placement
+        self.mock_order_manager.place_order.return_value = True
+        self.mock_order_manager.open_positions[symbol] = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': entry_price,
+            'quantity': quantity,
+            'entry_time': datetime.now(),
+            'status': 'OPEN',
+            'trailing_sl': entry_price * (1 - self.strategy.sl_percent / 100) # Initial SL
+        }
+
+        # Simulate price movement to trigger profit lock
+        profit_lock_trigger_price = entry_price * (1 + self.strategy.profit_lock_threshold / 100) + 0.1
+        mock_historical_data_trigger = {symbol: pd.DataFrame([{'close': profit_lock_trigger_price}])}
+
+        # Run strategy to trigger profit lock
+        self.strategy.run_for_minute(datetime.now(), mock_historical_data_trigger)
+
+        # Verify TSL was updated by profit lock
+        expected_profit_lock_tsl = profit_lock_trigger_price * (1 - self.strategy.profit_lock_tsl_percent / 100)
+        self.mock_order_manager.update_position.assert_called_with(symbol, {'trailing_sl': expected_profit_lock_tsl})
+
+        # Simulate price dropping to hit the profit-locked TSL
+        tsl_hit_price = expected_profit_lock_tsl - 0.1
+        mock_historical_data_hit_tsl = {symbol: pd.DataFrame([{'close': tsl_hit_price}])}
+
+        # Run strategy again to trigger TSL exit
+        self.strategy.run_for_minute(datetime.now(), mock_historical_data_hit_tsl)
+
+        # Verify position was closed due to TSL hit
+        self.mock_order_manager.close_order.assert_called_with(symbol, tsl_hit_price)
+        self.mock_strategy_webhook.assert_called_with('trade_signal', {'signal_type': 'exit', 'reason': 'ai_tsl', 'symbol': symbol, 'price': tsl_hit_price})
+        
+        # Assert trade_logger.log_trade was called with correct parameters
+        self.mock_trade_logger.log_trade.assert_called_once()
+        args, kwargs = self.mock_trade_logger.log_trade.call_args
+        self.assertAlmostEqual(kwargs['pnl'], (tsl_hit_price - entry_price) * quantity, places=2)
+        self.assertIn('trade_duration', kwargs)
+        self.assertIn('news_sentiment_score', kwargs)
+        self.assertIn('ai_safety_activation', kwargs)
+        self.assertEqual(kwargs['max_profit'], 0.0)
+        self.assertEqual(kwargs['max_drawdown'], 0.0)
+        self.assertEqual(kwargs['exit_reason'], 'ai_tsl')
+        self.assertEqual(kwargs['strategy_id'], 'ai_tsl')
+
+    def test_min_profit_mode_integration(self):
+        """
+        Integration test for minimum profit mode functionality.
+        Simulates a trade reaching min profit threshold and verifies immediate exit.
+        """
+        symbol = 'TCS'
+        entry_price = 200.0
+        quantity = 5
+
+        # Enable min profit mode in strategy config for this test
+        self.strategy.min_profit_mode = True
+
+        # Mock initial trade placement
+        self.mock_order_manager.place_order.return_value = True
+        self.mock_order_manager.open_positions[symbol] = {
+            'symbol': symbol,
+            'direction': 'BUY',
+            'entry_price': entry_price,
+            'quantity': quantity,
+            'entry_time': datetime.now(),
+            'status': 'OPEN',
+            'trailing_sl': entry_price * (1 - self.strategy.sl_percent / 100) # Initial SL
+        }
+
+        # Simulate price movement to trigger min profit exit
+        min_profit_trigger_price = entry_price * (1 + self.strategy.min_profit_threshold / 100) + 0.01
+        mock_historical_data_trigger = {symbol: pd.DataFrame([{'close': min_profit_trigger_price}])}
+
+        # Run strategy to trigger min profit exit
+        self.strategy.run_for_minute(datetime.now(), mock_historical_data_trigger)
+
+        # Verify position was closed due to min profit
+        self.mock_order_manager.close_order.assert_called_with(symbol, min_profit_trigger_price)
+        self.mock_strategy_webhook.assert_called_with('trade_signal', {'signal_type': 'exit', 'reason': 'min_profit', 'symbol': symbol, 'price': min_profit_trigger_price})
+        
+        # Assert trade_logger.log_trade was called with correct parameters
+        self.mock_trade_logger.log_trade.assert_called_once()
+        args, kwargs = self.mock_trade_logger.log_trade.call_args
+        self.assertAlmostEqual(kwargs['pnl'], (min_profit_trigger_price - entry_price) * quantity, places=2)
+        self.assertIn('trade_duration', kwargs)
+        self.assertIn('news_sentiment_score', kwargs)
+        self.assertIn('ai_safety_activation', kwargs)
+        self.assertEqual(kwargs['max_profit'], 0.0)
+        self.assertEqual(kwargs['max_drawdown'], 0.0)
+        self.assertEqual(kwargs['exit_reason'], 'min_profit')
+        self.assertEqual(kwargs['strategy_id'], 'min_profit')
+        self.assertEqual(self.mock_order_manager.open_positions, {}) # Position should be closed
+
     def test_ai_sl_target_integration_with_backtest(self):
-        """Integration test for sentiment-aware SL/TGT adjustments."""
+        """
+        Integration test for sentiment-aware SL/TGT adjustments.
+        """
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         symbol = 'RELIANCE'
 
@@ -569,3 +1071,49 @@ if __name__ == '__main__':
 
         # Verify position was closed due to sentiment-adjusted SL
         self.mock_order_manager.close_order.assert_called_with(symbol, 997)
+
+    def test_ai_safety_layer_integration(self):
+        """
+        Integration test for AI safety layer enforcement.
+        """
+        # Mock the data fetcher
+        self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
+        self.mock_data_fetcher.is_holiday_or_special_session.return_value = True
+
+        # Mock AI module to return high signal scores for entry
+        self.mock_ai_module.get_trade_direction.return_value = 'BUY'
+        ai_metrics = {
+            'ai_score': 0.9,
+            'leverage': 10.0, # High leverage to test cap
+            'trend_direction': 'UP',
+            'trend_flip_confirmation': False,
+            'sentiment_score': 0.5
+        }
+        self.mock_ai_module.get_ai_metrics.return_value = ai_metrics
+
+        # Set leverage caps in order manager
+        self.strategy.order_manager.daily_leverage_cap = 5.0
+
+        # Run the backtest
+        self.backtest_runner.run()
+
+        # Verify that the holiday leverage multiplier was applied
+        # The leverage should be 10.0 * 0.5 = 5.0
+        # The order manager should allow this as it is equal to the cap
+        self.strategy.order_manager.place_order.assert_called()
+        args, kwargs = self.strategy.order_manager.place_order.call_args
+        self.assertEqual(kwargs['leverage'], 5.0)
+
+        # Now, test the daily leverage cap
+        self.strategy.order_manager.reset_mock()
+        self.strategy.order_manager.current_leverage = 4.0
+        self.backtest_runner.run() # This should try to place another trade
+        self.strategy.order_manager.place_order.assert_called()
+        args, kwargs = self.strategy.order_manager.place_order.call_args
+        self.assertEqual(kwargs['leverage'], 5.0) # Holiday multiplier is still in effect
+
+        # The next trade should fail because the leverage cap is reached
+        self.strategy.order_manager.reset_mock()
+        self.strategy.order_manager.current_leverage = 4.9
+        self.backtest_runner.run()
+        self.strategy.order_manager.place_order.assert_not_called()

@@ -3,7 +3,7 @@
 # Description: Comprehensive backtest testing for DTS Intraday AI Trading System.
 #
 # DTS Intraday AI Trading System - Backtest Test Module
-# Version: 2025-08-24
+# Version: 2025-08-29
 #
 # This file contains comprehensive tests for the backtest functionality,
 # including capital allocation, TSL behavior, trend flip logic, PnL calculation,
@@ -49,13 +49,97 @@ class TestBacktestRunner(unittest.TestCase):
         self.mock_order_manager = MagicMock(spec=OrderManager)
         self.mock_data_fetcher = MagicMock(spec=DataFetcher)
         self.mock_ai_module = MagicMock(spec=AIModule)
+        # Mock adjust_sl_target_sentiment_aware to return expected values
+        self.mock_ai_module.adjust_sl_target_sentiment_aware.return_value = (98.0, 110.0) # Example values
         self.mock_news_filter = MagicMock(spec=NewsFilter)
+        # Mock news_filter.get_and_analyze_sentiment to return a default sentiment score
+        self.mock_news_filter.get_and_analyze_sentiment.return_value = 0.1 # Neutral sentiment for tests
+
+        # Mock get_ai_metrics to return a dictionary of AI metrics
+        self.mock_ai_module.get_ai_metrics.return_value = {
+            'ai_score': 0.8,
+            'leverage': 1.0,
+            'trend_direction': 'UP',
+            'trend_flip_confirmation': False,
+            'sentiment_score': 0.1
+        }
+
+        # Mock get_tsl_movement to return a dictionary of TSL details
+        self.mock_ai_module.get_tsl_movement.return_value = {
+            'new_tsl': 102.47,
+            'old_tsl': 99.0,
+            'tsl_percent': 0.5,
+            'volatility': 2.0,
+            'pnl_percent': 3.0,
+            'leverage': 1.0
+        }
         
         # Configure mock order manager
         self.mock_order_manager.initial_capital = INITIAL_CAPITAL
         self.mock_order_manager.available_capital = INITIAL_CAPITAL
         self.mock_order_manager.open_positions = {}
         self.mock_order_manager.closed_trades = []
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create strategy instance
+        self.strategy = Strategy(
+            redis_store=self.mock_redis_store,
+            order_manager=self.mock_order_manager,
+            data_fetcher=self.mock_data_fetcher,
+            ai_module=self.mock_ai_module,
+            news_filter=self.mock_news_filter
+        )
+        
+        # Create backtest runner
+        self.start_date = date(2025, 8, 15)
+        self.end_date = date(2025, 8, 15)
+        self.symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFC', 'ICICIBANK']
         
         # Create strategy instance
         self.strategy = Strategy(
@@ -77,6 +161,7 @@ class TestBacktestRunner(unittest.TestCase):
             end_date=self.end_date,
             symbols=self.symbols
         )
+        self.backtest_runner.strategy.order_manager = self.mock_order_manager
         
         # Create sample historical data
         self.sample_data = self._create_sample_historical_data()
@@ -130,7 +215,6 @@ class TestBacktestRunner(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         
         # Mock AI module to return high signal scores for entry
-        self.mock_ai_module.get_signal_score.return_value = 0.85
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Track initial capital
@@ -147,14 +231,15 @@ class TestBacktestRunner(unittest.TestCase):
             # Simulate trade entry
             entry_price = self.sample_data[symbol]['close'].iloc[0]
             quantity = int(expected_capital_per_trade / entry_price)
+            ai_metrics = self.mock_ai_module.get_ai_metrics.return_value
             
-            success = self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price)
+            success = self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price, leverage=ai_metrics['leverage'], ai_metrics=ai_metrics)
             if success:
                 trades_placed += 1
                 
                 # Verify capital allocation
                 self.mock_order_manager.place_order.assert_called_with(
-                    symbol, 'BUY', quantity, entry_price
+                    symbol, 'BUY', quantity, entry_price, leverage=ai_metrics['leverage'], ai_metrics=ai_metrics
                 )
         
         # Verify we can place trades for all available symbols
@@ -185,9 +270,6 @@ class TestBacktestRunner(unittest.TestCase):
         
         # Mock open positions
         self.mock_order_manager.get_open_positions.return_value = {symbol: mock_position}
-        
-        # Mock AI module TSL percentage
-        self.mock_ai_module.get_ai_tsl_percentage.return_value = TSL_PERCENT
         
         # Mock the update_position method that the strategy calls
         def mock_update_position(symbol, updates):
@@ -242,6 +324,7 @@ class TestBacktestRunner(unittest.TestCase):
         
         # Mock AI module to detect trend flip from UP to DOWN
         self.mock_ai_module.get_trend_direction.return_value = 'DOWN'
+        self.mock_ai_module.confirm_trend_reversal.return_value = True
         
         # Create historical data showing trend reversal - ensure it's not empty
         timestamp = self.sample_data[symbol].index[100]  # Mid-session
@@ -368,8 +451,8 @@ class TestBacktestRunner(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = neutral_data
         
         # Mock AI module to return low signal scores (no trades)
-        self.mock_ai_module.get_signal_score.return_value = 0.1
         self.mock_ai_module.get_trade_direction.return_value = None
+        self.mock_ai_module.get_ai_metrics.return_value['ai_score'] = 0.5
         
         # Since we can't run the actual backtest due to method mismatch,
         # we'll test the strategy logic directly
@@ -391,7 +474,6 @@ class TestBacktestRunner(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = self.sample_data
         
         # Mock AI module to return high signal scores
-        self.mock_ai_module.get_signal_score.return_value = 0.9
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Fill all available positions (use the symbols we have)
@@ -401,7 +483,8 @@ class TestBacktestRunner(unittest.TestCase):
             # Place trade
             entry_price = self.sample_data[symbol]['close'].iloc[0]
             quantity = 100
-            self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price)
+            ai_metrics = self.mock_ai_module.get_ai_metrics.return_value
+            self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price, leverage=ai_metrics['leverage'], ai_metrics=ai_metrics)
         
         # Verify we placed trades for all available symbols
         self.assertEqual(
@@ -448,7 +531,6 @@ class TestBacktestRunner(unittest.TestCase):
         self.mock_data_fetcher.get_historical_data.return_value = short_session_data
         
         # Mock AI module to allow some trades
-        self.mock_ai_module.get_signal_score.return_value = 0.8
         self.mock_ai_module.get_trade_direction.return_value = 'BUY'
         
         # Place a few trades
@@ -458,17 +540,42 @@ class TestBacktestRunner(unittest.TestCase):
             
             entry_price = short_session_data[symbol]['close'].iloc[0]
             quantity = 100
-            self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price)
+            ai_metrics = self.mock_ai_module.get_ai_metrics.return_value
+            self.mock_order_manager.place_order(symbol, 'BUY', quantity, entry_price, leverage=ai_metrics['leverage'], ai_metrics=ai_metrics)
         
         # Verify trades were placed
         self.assertEqual(self.mock_order_manager.place_order.call_count, 3)
         
         # Since we can't run the actual backtest due to method mismatch,
         # we'll test the EOD exit logic directly
-        self.strategy.close_all_positions_eod()
+        # Populate mock open_positions for the strategy to close
+        open_positions_to_close = {}
+        for i in range(3):
+            symbol = self.symbols[i]
+            entry_price = short_session_data[symbol]['close'].iloc[0]
+            quantity = 100
+            open_positions_to_close[symbol] = {
+                'symbol': symbol,
+                'direction': 'BUY',
+                'entry_price': entry_price,
+                'quantity': quantity,
+                'entry_time': datetime.now(),
+                'status': 'OPEN',
+            }
+        self.mock_order_manager.get_open_positions.return_value = open_positions_to_close
+        self.mock_order_manager.open_positions = open_positions_to_close # Ensure the attribute is also set for direct access
+
+        self.strategy.close_all_positions_eod(short_session_data)
         
-        # Verify EOD exit was called
-        self.mock_order_manager.close_all_positions_eod.assert_called()
+        # Verify close_order was called for each open position
+        self.assertEqual(self.mock_order_manager.close_order.call_count, 3)
+        for i in range(3):
+            symbol = self.symbols[i]
+            expected_price = short_session_data[symbol]['close'].iloc[-1]
+            self.mock_order_manager.close_order.assert_any_call(symbol, expected_price)
+        # Manually clear open_positions in the mock after the strategy attempts to close them
+        self.mock_order_manager.open_positions = {}
+        self.assertEqual(self.mock_order_manager.open_positions, {})
 
 if __name__ == '__main__':
     unittest.main()

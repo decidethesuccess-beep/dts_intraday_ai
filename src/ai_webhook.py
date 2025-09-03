@@ -17,6 +17,7 @@ import os
 import time
 from typing import Dict, Any, List
 
+from src.config import get_config
 from src.redis_store import RedisStore
 
 # Placeholder for API key from .env file
@@ -93,6 +94,7 @@ class AIWebhook:
 
         commentary = self._call_gemini_api(prompt)
         self.redis_store.store_ai_comment('daily', commentary)
+        send_event_webhook('ai_commentary', {'period': 'daily', 'commentary': commentary})
         log.info("Daily commentary successfully stored.")
 
     def get_and_store_weekly_commentary(self):
@@ -115,4 +117,31 @@ class AIWebhook:
         prompt = "Provide a detailed summary of the past month's trading performance."
         commentary = self._call_gemini_api(prompt)
         self.redis_store.store_ai_comment('monthly', commentary)
+        send_event_webhook('ai_commentary', {'period': 'monthly', 'commentary': commentary})
         log.info("Monthly commentary successfully stored.")
+
+def send_event_webhook(event_type: str, data: Dict[str, Any]):
+    """
+    Sends a generic event webhook to a configured URL.
+
+    Args:
+        event_type (str): The type of event (e.g., 'alert', 'trade_signal').
+        data (Dict[str, Any]): The event payload.
+    """
+    webhook_url = get_config("WEBHOOK_URL")
+    if not webhook_url:
+        log.debug("WEBHOOK_URL not configured. Skipping webhook.")
+        return
+
+    payload = {
+        "event_type": event_type,
+        "data": data,
+        "timestamp": time.time()
+    }
+
+    try:
+        response = requests.post(webhook_url, json=payload, timeout=10)
+        response.raise_for_status()
+        log.info(f"Successfully sent '{event_type}' webhook.")
+    except requests.exceptions.RequestException as e:
+        log.error(f"Failed to send webhook for event '{event_type}': {e}")

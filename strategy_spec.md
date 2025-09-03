@@ -1,164 +1,137 @@
-# DTS Intraday AI Strategy Specification
+DTS Intraday AI Strategy Specification
+======================================
 
-**Version:** 2025-08-27  
-**Owner:** DTS (Strategy Owner)  
-**Status:** Active Development  
+Version: 2025-08-31  
+Owner: DTS (Strategy Owner)  
+Status: Active Development (Phases 1–5 complete, 84/84 tests passing)
 
----
+1. Strategy Overview
+---------------------
 
-## 1. Strategy Overview
-The **DTS Intraday AI Trading System** is a **no-indicator**, **AI/NLP-driven**, **high-momentum stock trading strategy** for **NSE India**.  
+The DTS Intraday AI Trading System is an automated intraday trading framework for NSE equities.  
+It combines high-frequency data analysis, AI-driven decision-making, and robust risk management.
 
-- Supports both **BUY** and **SELL** trades.  
-- Implements **strict risk management**, **capital rotation**, and **adaptive AI decision-making**.  
-- Focused on **noise reduction**, **minimal false entries**, and **AI-driven scoring** for signal purity.  
+Core features include:
 
----
+- Symbol filtering (NSE_EQ only).
+- Entry & exit rules with SL, TGT, TSL, and trend reversal.
+- AI-based scoring with volume, momentum, sentiment, and circuit targeting.
+- AI-driven trailing stop-loss (AI-TSL).
+- AI safety layer for regime awareness, leverage control, and holiday detection.
+- Rolling-window retraining for continuous adaptability.
+- Integrated NSE holiday calendar with API + JSON fallback (via `holiday_manager.py`).
+- Performance analytics with trade logs, PnL curves, per-strategy and per-symbol reporting, and AI audit trail.
 
-## 2. Core Philosophy
-- **No traditional indicators** (RSI, MACD, etc.).  
-- **AI/NLP-based scoring** for entries.  
-- **Momentum & volume spike detection**.  
-- **Circuit targeting** for early strong moves.  
-- **AI-TSL & AI leverage control**.  
-- **Market awareness** (holidays, volatile or range-bound sessions).  
-- **Noise-free execution** with smart filters.  
+2. Symbol Universe
+------------------
 
----
+- Loads NSE EQ symbols from Angel One static JSON.
+- Filters out illiquid / non-EQ instruments.
+- Universe size dynamically restricted to ~100 high-volume gainers per day.
 
-## 3. Default Settings (as of 2025-08-16)
+3. Entry & Exit Rules
+---------------------
 
-| Setting               | Default Value                               |
-|-----------------------|---------------------------------------------|
-| Capital Allocation    | 10% per trade (max 10 concurrent trades)    |
-| Trade Direction       | BUY + SELL enabled                          |
-| Target Profit (TGT)   | +10%                                        |
-| Stop Loss (SL)        | -2%                                         |
-| Trailing Stop Loss    | 1% BUY, 1% SELL (from entry price)          |
-| TSL Mode              | AI (classic / ai / min / max)               |
-| Trend Flip Exit       | Always ON                                   |
-| Auto Exit Time        | 3:20 PM IST                                 |
+**Entry Window:** 09:20 – 15:20 IST  
+**Exit Window:** Forced exit at 15:20 IST  
 
----
+**Risk Management:**
+- Stop Loss (SL): –2%  
+- Target (TGT): +10%  
+- Trailing SL (TSL): 1% minimum, volatility-aware via AI-TSL  
+- Trend Reversal Exit: Always enabled (both long & short)  
 
-## 4. AI-Driven Position Sizing
-Position sizing uses **AI signal scores** with a **tiered leverage model** to maximize capital efficiency:
+**Capital Allocation:**
+- 10% of total capital per trade  
+- Max 10 concurrent trades  
+- Capital recycling when trades exit  
 
-| Signal Score Range | Leverage Multiplier |
-|--------------------|---------------------|
-| ≥ 0.80             | 5.0x                |
-| 0.50 − 0.79        | 3.5x                |
-| < 0.50             | 1.0x                |
+4. AI Integration
+-----------------
+### 4.1 AI Scoring
+- Combines volume spikes, momentum, sentiment (via Finnhub), and circuit potential.  
+- Produces AI Confidence Score (0–1).  
+- Higher score → higher priority for entry.  
 
-**Rationale:** Deploy significant capital only when AI confidence is high, combining momentum, volume, and sentiment.
+### 4.2 AI-TSL
+- Volatility-aware trailing SL.  
+- Adjusts dynamically based on intraday ATR/volatility.  
+- Tightens faster in sideways markets.  
 
----
+### 4.3 AI Safety Layer
+- Market regime awareness (detects low-volatility days).  
+- Profit-lock behavior (secure partial gains).  
+- Min-profit exits to avoid reversals.  
+- Holiday & short-session guardrails (via live NSE API + JSON fallback).  
+- Leverage caps enforced.  
 
-## 5. Risk Management
-- **Capital Allocation:** Fixed % of total capital per trade.  
-- **Max Positions:** Configurable concurrent trade limit.  
-- **Dynamic AI Leverage:** Adjusts leverage based on AI score.  
-- **Trend-Flip Exit:** Exits on strong reversals.  
-- **AI-TSL:** Continuous trailing SL adjustments.  
-- **Hard SL/TGT:** Mandatory SL and TGT levels.  
-- **Guaranteed Auto-Exit:** Closes all positions at 3:20 PM IST.  
+### 4.4 Rolling-Window Retraining
+- Retrains periodically on rolling windows of market data.  
+- Triggers: time-based or size-based.  
+- Prevents overfitting while adapting.  
 
----
+### 4.5 Live NSE Calendar Integration
+- Uses NSE official API (`/api/holiday-master?type=trading`).  
+- Centralized in `holiday_manager.py` (not `utils.py`).  
+- Fallback to local `/data/holidays.json` when API unavailable.  
+- Dashboard highlights Holiday Mode when active.  
+- Integrated with AI Safety Layer to block/adjust trades.  
 
-## 6. Core Modules
-- `strategy.py` – Main trading logic.  
-- `data_fetcher.py` – Market data retrieval (Angel One API).  
-- `ai_module.py` – AI scoring, leverage, and AI-TSL.  
-- `order_manager.py` – Trade execution and tracking.  
-- `news_filter.py` – Sentiment-based filtering.  
-- `redis_store.py` – Real-time state management.  
-- `live_stream.py` – Live market data ingestion.  
-- `backtest_runner.py` – Historical simulation.  
+5. Milestones / Phases
+----------------------
 
----
+✅ **Phase 1 – Data & Backtest Foundation**  
+- Symbol filtering (NSE_EQ only)  
+- Historical 1-min OHLCV fetch  
+- Backtest engine with Streamlit dashboard  
+- ✅ Completed  
 
-## 7. Exit Conditions
-- **Trend-Flip Exit:** Always ON, highest priority.  
-- **AI-TSL:** Dynamic exits in profit.  
-- **Hard SL/TGT:** -2% SL, +10% TGT (configurable via `.env`).  
-- **Auto-Exit:** 3:20 PM IST.  
-- **Min Profit Mode:** Locks partial profits early.  
+✅ **Phase 2 – Entry & Exit Logic**  
+- Entry freeze at 09:20 IST  
+- SL/TGT/TSL setup  
+- Trend reversal exits  
+- Auto-exit at 15:20 IST  
+- ✅ Completed  
 
----
+✅ **Phase 3 – AI Integration**  
+- News Sentiment Filter (Finnhub)  
+- AI Scoring (volume + momentum + sentiment)  
+- AI-TSL (volatility-aware trailing stop-loss)  
+- ✅ Completed  
 
-## 8. AI/ML Integration
-- **AI Scoring:** 0.0–1.0 scoring based on momentum, volume, and news.  
-- **AI Leverage:** Adjusts size and leverage dynamically.  
-- **AI-TSL:** Optimizes exits.  
-- **Trend-Flip:** Detects and exits on reversals.  
-- **Continuous Learning:** Rolling-window optimization prevents overfitting.  
-- **Noise Filtering:** Reduces false entries.  
-- **Min Profit Mode:** Early partial exits.  
+✅ **Phase 4 – Advanced AI Modules**  
+- AI Safety Layer (holiday guard, crash guard, leverage cap)  
+- Profit-Lock Mode  
+- Minimum Profit Mode  
+- Circuit Targeting  
+- Rolling-Window Retraining  
+- Live NSE Calendar Integration via `holiday_manager.py`  
+- ✅ Completed (79/79 tests passing)  
 
----
+✅ **Phase 5 – Performance Analytics & Reports**  
+- Trade logs + PnL curves  
+- Per-strategy & per-symbol analytics  
+- AI decision audit trail  
+- Integrated into dashboards (`backtest_dashboard.py`, `intraday_dashboard_GPT.py`)  
+- ✅ Completed (84/84 tests passing)  
 
-## 9. Dashboard & Settings
-- **Settings Panel:** AI leverage, TSL mode, noise reduction, sentiment filter, min-profit mode.  
-- **Performance Reports:** Daily, weekly, monthly, yearly (via Gemini AI Studio).  
-- **Live Status Panel:** Capital used, open trades, PnL, waitlist, pause/resume.  
+⏳ **Phase 6 – Live Deployment (Paper Trading)**  
+- Real-time Redis streaming  
+- Paper execution via Angel One API  
+- Dashboard monitoring of live positions  
 
----
+⏳ **Phase 7 – Live Deployment (Production)**  
+- Cloud deployment (Render/Oracle/GCP/AWS)  
+- Automated trading with safeguards  
+- Failover handling  
 
-## 10. Data Sources
-- **Market Data:** Angel One Market Feed API (1-min OHLCV).  
-- **News Sentiment:** AI/NLP from headlines.  
-- **Holiday Data:** NSE calendar + Angel One API.  
-- **Symbols:** NSE EQ JSON feed, cached in CSV/memory.  
+⏳ **Phase 8 – Continuous Learning & Optimization**  
+- Ongoing retraining using rolling windows  
+- Adaptive thresholds  
+- Refinements via live feedback  
 
----
-
-## 11. AI Webhook Integration
-- **Purpose:** AI-driven guidance, trade commentary, and alerts.  
-- **Source:** Gemini AI Studio API (`GEMINI_API_KEY`).  
-- **Functions:** Commentary, suggestions, risk alerts, improvement tips.  
-- **Dashboard Integration:** Comments stored in Redis and displayed on dashboard.  
-- **Safety:** Timeout and exception handling; advisory only.  
-
----
-
-## 12. Test Coverage & Verification (as of 2025-08-24)
-- **Unit Tests:** Cover core modules, AI-TSL, SL/TGT, utilities.  
-- **Backtest Tests:** Validate allocation, rotation, exits, PnL, edge conditions.  
-- **Integration Tests:** Confirm end-to-end workflows:  
-  - `test_full_backtest_run`  
-  - `test_dashboard_data_pipeline`  
-  - `test_concurrent_positions_and_reallocation`  
-  - `test_trend_flip_and_dashboard_reflects_change`  
-  - `test_edge_cases_integration`  
-
-**Results:** 46/46 tests passing, Phase 2 AI completed.  
-**Mocks & Isolation:** Problematic dependencies (e.g., dashboard) replaced with mock classes for CI/CD stability.  
-
----
-
-## 13. Phase 2 AI Completion & Next Steps
-
-**Phase 2 AI features implemented:**  
-- AI Stop Loss / Target Adjustment (BUY/SELL, sentiment-aware).  
-- Trend Reversal exits enhanced with AI confirmation.  
-- All 46 tests passing (unit + integration).  
-
-**Next Development Goals (Phase 3 / AI Enhancements):**  
-1. **AI News Sentiment Integration**  
-   - Real-time NLP scoring of headlines.  
-   - Skip BUY on negative news, favor SELL.  
-   - Influence AI SL/Target and leverage decisions.  
-
-2. **Webhook Triggers for AI Events**  
-   - Push AI alerts, commentary, and risk signals.  
-   - Optional integration with dashboard or alerts.  
-   - Include safety/timeouts.  
-
-3. **Dashboard Visualization of AI Metrics**  
-   - Display AI scores, leverage, TSL movements, trade signals.  
-   - Filter by AI-only trades, trend-flip, and news sentiment.  
-   - Live updates synced via Redis and Gemini AI Studio API.  
-
-4. **AI Safety Layer Enforcement**  
-   - Daily leverage cap, exposure cap, holiday/session tightening.  
-   - Profitlock behavior (tighten stops once capital target met).
+6. Current Status
+-----------------
+✅ Phases 1–5 fully implemented (including analytics + holiday calendar).  
+✅ 84/84 tests passing (as of 2025-08-31).  
+⏳ Next milestone: **Phase 6 (Live Paper Trading)**.  

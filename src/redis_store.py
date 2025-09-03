@@ -144,3 +144,38 @@ class RedisStore:
         """Retrieves the current trend status."""
         return self.r.get(f'trend:{symbol}')
 
+    # --- Holiday Management ---
+
+    def set_holidays(self, holidays: set, expiry_seconds: int = 86400):
+        """Stores the set of holiday dates (as YYYY-MM-DD strings) in Redis with an expiry."""
+        try:
+            holidays_list = sorted([d.strftime("%Y-%m-%d") for d in holidays])
+            self.r.setex('trading_holidays', expiry_seconds, json.dumps(holidays_list))
+            self.r.set('trading_holidays_last_refresh', datetime.now().isoformat())
+            log.info(f"Holidays stored in Redis with expiry {expiry_seconds}s.")
+        except Exception as e:
+            log.error(f"Error setting holidays in Redis: {e}")
+
+    def get_holidays(self) -> Optional[set]:
+        """Retrieves holiday dates from Redis."""
+        try:
+            holidays_data = self.r.get('trading_holidays')
+            if holidays_data:
+                holidays_list = json.loads(holidays_data)
+                return {datetime.strptime(d, "%Y-%m-%d").date() for d in holidays_list}
+            return None
+        except Exception as e:
+            log.error(f"Error getting holidays from Redis: {e}")
+            return None
+
+    def get_holiday_refresh_timestamp(self) -> Optional[datetime]:
+        """Retrieves the last holiday refresh timestamp from Redis."""
+        try:
+            timestamp_str = self.r.get('trading_holidays_last_refresh')
+            if timestamp_str:
+                return datetime.fromisoformat(timestamp_str)
+            return None
+        except Exception as e:
+            log.error(f"Error getting holiday refresh timestamp from Redis: {e}")
+            return None
+
